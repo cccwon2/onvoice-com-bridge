@@ -1362,6 +1362,376 @@ void WorkerThread() {
 
 ---
 
+### 2025-11-16: ProcessLoopbackCapture 코드 리뷰
+
+#### 발견한 핵심 패턴 5가지
+
+##### 1️⃣ 비동기 활성화 패턴
+
+**문제**: `ActivateAudioInterfaceAsync`는 비동기 API
+**해결**: Completion Handler + Event 대기
+
+```cpp
+// Completion Handler 클래스
+class ActivateCompletionHandler :
+    public IActivateAudioInterfaceCompletionHandler
+{
+    HANDLE m_hEvent;  // 완료 신호용 이벤트
+
+public:
+    HRESULT ActivateCompleted(IActivateAudioInterfaceAsyncOperation* pAsyncOp) {
+        // 작업 완료 후 결과 획득
+        HRESULT hrActivate = S_OK;
+        IUnknown* pUnknown = NULL;
+
+        pAsyncOp->GetActivateResult(&hrActivate, &pUnknown);
+
+        if (SUCCEEDED(hrActivate)) {
+            // IAudioClient 인터페이스 얻기
+            pUnknown->QueryInterface(__uuidof(IAudioClient), ...);
+        }
+
+        // 대기 중인 스레드에 신호
+        SetEvent(m_hEvent);
+
+        return S_OK;
+    }
+};
+
+// 호출 코드
+ActivateAudioInterfaceAsync(..., pHandler, ...);
+WaitForSingleObject(pHandler->m_hEvent, INFINITE);  // 완료 대기
+```
+
+**배운 점**:
+
+- COM 콜백 인터페이스 구현 방법
+- 비동기 작업 동기화 패턴 (Event)
+- `GetActivateResult()`로 결과 획득
+
+**OnVoice 적용**:
+
+```
+COM DLL에서도 같은 패턴 사용
+→ Completion Handler는 private 클래스로 감추기
+→ StartCapture는 블로킹이므로 별도 스레드 필수
+```
+
+---
+
+##### 2️⃣ 캡처 스레드 패턴
+
+**문제**: WASAPI 캡처는 블로킹 작업
+**해결**: 별도 스레드 + 상태 관리
+
+```cpp
+// Static 스레드 함수
+static DWORD WINAPI CaptureThreadProc(LPVOID param) {
+    ProcessLoopbackCapture* pThis = (ProcessLoopbackCapture*)param;
+
+    // 1. 우선순위 상승
+    HANDLE hTask = AvSetMmThreadCharacteristics(TEXT("Audio"), &taskIndex);
+
+    // 2. 캡처 시작
+    pThis->m_pAudioClient->Start();
+    SetEvent(pThis->m_hStartEvent);  // 시작 완료 신호
+
+    // 3. 루프
+    while (pThis->m_state == CAPTURING) {
+        WaitForSingleObject(pThis->m_hCaptureEvent, 2000);
+        // GetBuffer / Process / ReleaseBuffer
+    }
+
+    // 4. 정리
+    pThis->m_pAudioClient->Stop();
+    AvRevertMmThreadCharacteristics(hTask);
+
+    return 0;
+}
+
+// 스레드 생성
+m_hCaptureThread = CreateThread(
+    NULL,                    // 기본 보안 속성
+    0,                       // 기본 스택 크기
+    CaptureThreadProc,       // 스레드 함수
+    this,                    // 파라미터 (this 포인터!)
+    0,                       // 즉시 실행
+    NULL                     // 스레드 ID 불필요
+);
+
+// 시작 대기 (블로킹!)
+WaitForSingleObject(m_hStartEvent, INFINITE);
+```
+
+**배운 점**:
+
+- static 함수에 this 포인터 전달 패턴
+- 스레드 우선순위 상승 (Audio 특성)
+- 시작 완료 신호 (Event)
+- 타임아웃 2000ms로 교착 상태 방지
+
+**OnVoice 적용**:
+
+```
+COM StartCapture(pid):
+  1. 캡처 스레드 생성
+  2. 즉시 S_OK 반환 (비블로킹)
+  3. 스레드 내부에서 실제 StartCapture 호출
+
+주의:
+  - 스레드 생성/종료는 반드시 같은 COM 스레드에서!
+```
+
+---
+
+##### 3️⃣ 에러 처리 패턴
+
+**3가지 에러 처리 레이어**:
+
+```cpp
+// Layer 1: 사용자 친화적 enum
+enum class eCaptureError {
+    NONE,
+    ALREADY_CAPTURING,
+    NOT_CAPTURING,
+    INVALID_FORMAT,
+    INVALID_PROCESS_ID,
+    ACTIVATION_FAILED,
+    INITIALIZATION_FAILED
+};
+
+// Layer 2: HRESULT 저장
+class ProcessLoopbackCapture {
+private:
+    HRESULT m_lastHResult;  // 마지막 Windows 에러
+
+public:
+    HRESULT GetLastErrorResult() const {
+        return m_lastHResult;
+    }
+};
+
+// Layer 3: 에러 텍스트 변환
+const char* GetErrorText(eCaptureError error) {
+    switch (error) {
+        case NONE: return "Success";
+        case ALREADY_CAPTURING: return "Already capturing";
+        // ...
+    }
+}
+
+// 사용 예시
+eCaptureError error = capture.StartCapture();
+if (error != eCaptureError::NONE) {
+    printf("Error: %s\n", GetErrorText(error));
+    printf("HRESULT: 0x%X\n", capture.GetLastErrorResult());
+}
+```
+
+**배운 점**:
+
+- 사용자는 enum만 보면 됨
+- 디버깅 시 HRESULT 확인 가능
+- 텍스트 변환으로 로깅 편리
+
+**OnVoice 적용**:
+
+```
+COM DLL도 3-layer 에러 처리:
+  1. COM HRESULT (S_OK, E_FAIL 등)
+  2. 내부 에러 코드 (enum)
+  3. GetLastError() 메서드로 상세 정보
+```
+
+---
+
+##### 4️⃣ 스레드 안전성 패턴
+
+**atomic을 활용한 상태 관리**:
+
+```cpp
+#include <atomic>
+
+class ProcessLoopbackCapture {
+private:
+    std::atomic<eCaptureState> m_state;  // atomic!
+
+public:
+    // Thread-safe getter
+    eCaptureState GetState() const {
+        return m_state.load();  // 원자적 읽기
+    }
+
+    // 상태 변경
+    void ChangeState(eCaptureState newState) {
+        m_state.store(newState);  // 원자적 쓰기
+    }
+};
+
+// 캡처 스레드에서
+while (pThis->m_state == CAPTURING) {  // atomic 읽기
+    // ...
+}
+
+// 메인 스레드에서
+m_state = STOPPING;  // atomic 쓰기 → 스레드가 즉시 감지
+```
+
+**배운 점**:
+
+- `std::atomic<T>`로 lock 없이 스레드 안전
+- `load()`, `store()` 명시적 호출
+- 또는 암묵적 변환 (컴파일러가 처리)
+
+**OnVoice 적용**:
+
+```
+COM 객체의 상태 관리:
+  - m_state를 atomic으로
+  - GetState만 thread-safe 보장
+  - Start/Stop은 같은 스레드 제약 명시
+```
+
+---
+
+##### 5️⃣ Lock-Free Queue 패턴 (선택적)
+
+**문제**: 오디오 콜백에서 느린 작업 금지
+**해결**: Lock-Free Queue + Worker Thread
+
+```cpp
+#ifdef PROCESS_LOOPBACK_CAPTURE_USE_QUEUE
+
+#include "readerwriterqueue.h"  // cameron314's queue
+
+class ProcessLoopbackCapture {
+private:
+    moodycamel::ReaderWriterQueue<AudioChunk> m_queue;
+    std::thread m_workerThread;
+    std::atomic<bool> m_workerRunning;
+
+    void WorkerThreadProc() {
+        AudioChunk chunk;
+        while (m_workerRunning) {
+            if (m_queue.try_dequeue(chunk)) {
+                // 여기서 느린 작업 OK
+                if (m_callback) {
+                    m_callback(chunk.data.begin(), chunk.data.end(), m_pUserData);
+                }
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+    }
+};
+
+// 오디오 스레드
+void ProcessAudioBuffer(BYTE* pData, UINT32 numFrames) {
+    if (m_useQueue) {
+        AudioChunk chunk(pData, numFrames);
+        m_queue.enqueue(chunk);  // Lock-free!
+        return;
+    }
+
+    // 직접 콜백
+    m_callback(...);
+}
+
+#endif
+```
+
+**배운 점**:
+
+- Single-Producer-Single-Consumer Queue
+- Lock-free = 뮤텍스 없이 스레드 안전
+- `try_dequeue()` = 블로킹 없음
+
+**OnVoice 적용**:
+
+```
+Phase 1 MVP: Queue 없이 (단순화)
+  - 콜백에서 빠른 작업만 (버퍼 복사)
+
+Phase 2 확장: Queue 추가
+  - 콜백 → Queue
+  - Worker → Deepgram 전송
+  - 지연 증가하지만 안정성 ↑
+```
+
+---
+
+#### 메모리 관리 Best Practices
+
+##### ✅ DO: NULL 체크 후 Release
+
+```cpp
+if (m_pAudioClient != NULL) {
+    m_pAudioClient->Release();
+    m_pAudioClient = NULL;  // 중요!
+}
+```
+
+##### ✅ DO: 역순 정리
+
+```cpp
+// 생성 순서: Enumerator → Device → AudioClient → CaptureClient
+// 정리 순서: CaptureClient → AudioClient → Device → Enumerator
+```
+
+##### ✅ DO: 소멸자에서 자동 정리
+
+```cpp
+~ProcessLoopbackCapture() {
+    if (m_state == CAPTURING) {
+        StopCapture();  // 자동 정리
+    }
+}
+```
+
+##### ❌ DON'T: Release 없이 재할당
+
+```cpp
+// ❌ 메모리 누수!
+m_pAudioClient = NULL;  // 이전 객체는?
+
+// ✅ 올바른 방법
+if (m_pAudioClient) {
+    m_pAudioClient->Release();
+}
+m_pAudioClient = NULL;
+```
+
+---
+
+#### OnVoice 재구현 시 체크리스트
+
+**참고할 패턴**:
+
+- [x] 비동기 활성화 + Event 대기
+- [x] 캡처 스레드 분리 (static 함수 + this 포인터)
+- [x] 3-layer 에러 처리
+- [x] atomic 상태 관리
+- [ ] Lock-Free Queue (나중에)
+
+**단순화할 부분**:
+
+- [ ] Pause/Resume 제거 (MVP에서 불필요)
+- [ ] Queue 제거 (Phase 1에서는)
+- [ ] 다중 포맷 지원 제거 (16kHz mono만)
+
+**추가할 부분**:
+
+- [ ] COM 이벤트 콜백 (IConnectionPoint)
+- [ ] SAFEARRAY 변환 (BYTE\* → JS Array)
+- [ ] PID 유효성 검증
+
+---
+
+**마지막 업데이트**: 2025-11-16  
+**다음 단계**: Phase 1 시작 (Visual Studio 설치)
+
+---
+
 ### OnVoice 적용 계획
 
 #### Phase 3 (T+4-6h): 레퍼런스 학습
