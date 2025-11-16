@@ -705,7 +705,741 @@ ptr2->Release();                   // 참조 카운트 = 0 → 삭제
 
 ## WASAPI 오디오 캡처
 
-(Phase 3에서 학습 예정)
+### 2025-11-16: WASAPI란 무엇인가?
+
+**Windows Audio Session API (WASAPI)**: Windows Vista 이후 도입된 저수준 오디오 API
+
+#### 🎵 실생활 비유
+
+WASAPI는 **녹음 스튜디오의 믹서 보드**와 같습니다:
+
+```
+일반 앱의 오디오 재생:
+사용자 앱 → DirectSound/MME → Windows 오디오 엔진 → 스피커
+
+WASAPI 사용:
+사용자 앱 → WASAPI → 오디오 엔진 직접 접근 → 최소 지연, 높은 품질
+```
+
+**장점**:
+
+- ✅ **낮은 지연 (Low Latency)**: DirectSound보다 10배 빠름
+- ✅ **높은 품질**: 비트-퍼펙트 오디오 (변환 없음)
+- ✅ **프로세스별 제어**: 특정 앱만 캡처/제어 가능
+- ✅ **Exclusive 모드**: 오디오 디바이스 독점 사용
+
+**OnVoice에서의 역할**:
+
+```
+Discord/Chrome/Edge 오디오
+    ↓ (WASAPI Loopback Capture)
+C++ 캡처 엔진
+    ↓ (16kHz PCM)
+FastAPI 서버 (Deepgram STT)
+```
+
+---
+
+### WASAPI 아키텍처 이해
+
+#### 핵심 컴포넌트 4가지
+
+```
+┌─────────────────────────────────────┐
+│  1. IMMDeviceEnumerator             │  ← 오디오 디바이스 목록 관리
+│     - GetDefaultAudioEndpoint()     │
+│     - EnumAudioEndpoints()          │
+└──────────────┬──────────────────────┘
+               ↓
+┌─────────────────────────────────────┐
+│  2. IMMDevice                       │  ← 특정 오디오 디바이스
+│     - Activate(IAudioClient)        │
+│     - GetId(), GetState()           │
+└──────────────┬──────────────────────┘
+               ↓
+┌─────────────────────────────────────┐
+│  3. IAudioClient                    │  ← 오디오 세션 관리
+│     - Initialize()                  │
+│     - Start(), Stop()               │
+│     - GetService(IAudioCaptureClient)│
+└──────────────┬──────────────────────┘
+               ↓
+┌─────────────────────────────────────┐
+│  4. IAudioCaptureClient             │  ← 실제 오디오 데이터
+│     - GetBuffer()                   │
+│     - ReleaseBuffer()               │
+└─────────────────────────────────────┘
+```
+
+---
+
+### 2025-11-16: WASAPI Loopback Capture
+
+**Loopback Capture**: "스피커로 나가는 소리"를 중간에 가로채기
+
+#### 🔊 작동 원리
+
+```
+일반 재생 흐름:
+앱 (Discord) → 오디오 엔진 → 스피커
+
+Loopback Capture:
+앱 (Discord) → 오디오 엔진 → ┬ → 스피커
+                             └ → IAudioCaptureClient → 우리 앱
+```
+
+**실생활 비유**:
+
+```
+전화기 도청 장치처럼, 전화선 중간에 분기를 만들어서
+상대방과 내 목소리를 모두 녹음하는 것과 같음.
+
+차이점:
+- 일반 마이크: 실제 마이크 입력 캡처
+- Loopback: 스피커 출력을 캡처 (앱이 재생하는 소리)
+```
+
+---
+
+### Process-Specific Loopback Capture (핵심!)
+
+**일반 Loopback의 문제**:
+
+```
+시스템 전체 오디오를 캡처
+→ Discord + YouTube + 카카오톡 알림 소리 + 시스템 효과음
+→ 모든 소리가 섞여서 들어옴 (OnVoice에선 쓸모없음)
+```
+
+**Process-Specific Loopback의 해결**:
+
+```cpp
+// Windows 10 1803 (Build 17134) 이상에서 지원
+AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS loopbackParams = {};
+loopbackParams.TargetProcessId = discordPid;  // Discord만!
+loopbackParams.ProcessLoopbackMode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+
+AUDIOCLIENT_ACTIVATION_PARAMS activationParams = {};
+activationParams.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+activationParams.ProcessLoopbackParams = &loopbackParams;
+```
+
+**결과**:
+
+- ✅ Discord 프로세스의 오디오만 캡처
+- ✅ Discord의 자식 프로세스도 포함 (웹뷰 등)
+- ✅ Chrome, YouTube 소리는 완전히 무시
+
+---
+
+### WASAPI 초기화 흐름 (ProcessLoopbackCapture 기준)
+
+#### 전체 흐름 다이어그램
+
+```
+시작
+ ↓
+┌──────────────────────────────────┐
+│ 1. COM 초기화                    │
+│    CoInitializeEx(COINIT_MTA)    │
+└──────────┬───────────────────────┘
+           ↓
+┌──────────────────────────────────┐
+│ 2. 기본 오디오 디바이스 획득      │
+│    IMMDeviceEnumerator           │
+│    →GetDefaultAudioEndpoint      │
+│    →IMMDevice                    │
+└──────────┬───────────────────────┘
+           ↓
+┌──────────────────────────────────┐
+│ 3. IAudioClient 활성화           │
+│    ActivateAudioInterfaceAsync   │
+│    + PROCESS_LOOPBACK_PARAMS     │
+└──────────┬───────────────────────┘
+           ↓
+┌──────────────────────────────────┐
+│ 4. 오디오 포맷 설정              │
+│    GetMixFormat() or 사용자 지정  │
+│    IAudioClient->Initialize()    │
+└──────────┬───────────────────────┘
+           ↓
+┌──────────────────────────────────┐
+│ 5. IAudioCaptureClient 획득      │
+│    IAudioClient->GetService()    │
+└──────────┬───────────────────────┘
+           ↓
+┌──────────────────────────────────┐
+│ 6. 캡처 루프 시작                │
+│    IAudioClient->Start()         │
+│    GetBuffer() 반복 호출         │
+└──────────────────────────────────┘
+```
+
+---
+
+### 단계별 상세 코드 패턴
+
+#### Step 1: COM 초기화
+
+```cpp
+// 멀티스레드 환경 (Apartment-Threaded가 아닌 MTA)
+HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+if (FAILED(hr)) {
+    printf("❌ COM 초기화 실패: 0x%X\n", hr);
+    return hr;
+}
+```
+
+**왜 COINIT_MULTITHREADED?**
+
+- WASAPI 캡처는 **별도 스레드**에서 실행됨
+- STA(Single-Threaded Apartment)는 메시지 펌프 필요
+- MTA(Multi-Threaded Apartment)는 자유로운 스레드 사용
+
+---
+
+#### Step 2: 기본 오디오 디바이스 획득
+
+```cpp
+IMMDeviceEnumerator* pEnumerator = NULL;
+IMMDevice* pDevice = NULL;
+
+// 디바이스 열거자 생성
+hr = CoCreateInstance(
+    __uuidof(MMDeviceEnumerator),
+    NULL,
+    CLSCTX_ALL,
+    __uuidof(IMMDeviceEnumerator),
+    (void**)&pEnumerator
+);
+
+if (FAILED(hr)) {
+    printf("❌ 디바이스 열거자 생성 실패\n");
+    return hr;
+}
+
+// 기본 렌더링 디바이스 (스피커) 획득
+hr = pEnumerator->GetDefaultAudioEndpoint(
+    eRender,    // 렌더링 디바이스 (스피커/헤드폰)
+    eConsole,   // 일반 용도 (게임/멀티미디어)
+    &pDevice    // 결과 받을 포인터
+);
+
+if (FAILED(hr)) {
+    printf("❌ 기본 오디오 디바이스 획득 실패\n");
+    pEnumerator->Release();
+    return hr;
+}
+
+// 정리
+pEnumerator->Release();  // 더 이상 필요 없음
+```
+
+**eRender vs eCapture**:
+
+```
+eRender: 스피커/헤드폰 (출력 디바이스)
+  → Loopback Capture에서는 eRender 사용!
+  → "스피커로 나가는 소리"를 캡처하기 때문
+
+eCapture: 마이크 (입력 디바이스)
+  → 일반 녹음에서 사용
+```
+
+**eConsole vs eMultimedia vs eCommunications**:
+
+```
+eConsole: 일반 용도 (게임, 영화)
+eMultimedia: 멀티미디어 (거의 eConsole과 동일)
+eCommunications: 통신 (스카이프, 줌 등)
+  → Discord는 통신 앱이지만 eConsole로도 잡힘
+```
+
+---
+
+#### Step 3: IAudioClient 활성화 (Process Loopback)
+
+**핵심 구조체**:
+
+```cpp
+// 1. Process Loopback 파라미터
+AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS loopbackParams = {};
+loopbackParams.TargetProcessId = targetPid;  // Discord/Chrome PID
+loopbackParams.ProcessLoopbackMode =
+    PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+    // ↑ 타깃 프로세스 + 자식 프로세스 포함
+
+// 2. Activation 파라미터
+AUDIOCLIENT_ACTIVATION_PARAMS activationParams = {};
+activationParams.ActivationType =
+    AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+activationParams.ProcessLoopbackParams = &loopbackParams;
+
+// 3. PropVariant로 래핑
+PROPVARIANT activateParams = {};
+activateParams.vt = VT_BLOB;
+activateParams.blob.cbSize = sizeof(activationParams);
+activateParams.blob.pBlobData = (BYTE*)&activationParams;
+```
+
+**비동기 활성화**:
+
+```cpp
+// ActivateAudioInterfaceAsync: 비동기 호출!
+IActivateAudioInterfaceAsyncOperation* pAsyncOp = NULL;
+
+hr = ActivateAudioInterfaceAsync(
+    deviceIdString,          // 디바이스 ID (IMMDevice에서 획득)
+    __uuidof(IAudioClient),  // 요청할 인터페이스
+    &activateParams,         // Process Loopback 파라미터
+    pCompletionHandler,      // 완료 콜백 (IActivateAudioInterfaceCompletionHandler)
+    &pAsyncOp                // 비동기 작업 객체
+);
+
+if (FAILED(hr)) {
+    printf("❌ 오디오 인터페이스 활성화 실패\n");
+    return hr;
+}
+
+// 완료 대기 (이벤트 사용)
+WaitForSingleObject(hEvent, INFINITE);
+```
+
+**왜 비동기인가?**
+
+- 오디오 디바이스 초기화는 시간이 걸림 (수백 ms)
+- UI 스레드 블로킹 방지
+- OnVoice에서는: 캡처 스레드에서 호출하므로 블로킹 허용
+
+---
+
+#### Step 4: 오디오 포맷 설정
+
+```cpp
+IAudioClient* pAudioClient = NULL;  // Step 3에서 획득
+
+// 방법 1: 디바이스 기본 포맷 사용
+WAVEFORMATEX* pWaveFormat = NULL;
+hr = pAudioClient->GetMixFormat(&pWaveFormat);
+
+// 방법 2: 사용자 정의 포맷 (OnVoice 방식)
+WAVEFORMATEX waveFormat = {};
+waveFormat.wFormatTag = WAVE_FORMAT_PCM;        // 또는 WAVE_FORMAT_IEEE_FLOAT
+waveFormat.nChannels = 1;                       // Mono
+waveFormat.nSamplesPerSec = 16000;              // 16kHz
+waveFormat.wBitsPerSample = 16;                 // 16bit
+waveFormat.nBlockAlign = waveFormat.nChannels *
+                         waveFormat.wBitsPerSample / 8;  // 2 bytes
+waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec *
+                             waveFormat.nBlockAlign;     // 32000 bytes/sec
+waveFormat.cbSize = 0;                          // 확장 정보 없음
+
+// IAudioClient 초기화
+hr = pAudioClient->Initialize(
+    AUDCLNT_SHAREMODE_SHARED,        // 공유 모드 (독점 모드 아님)
+    AUDCLNT_STREAMFLAGS_LOOPBACK |   // Loopback 플래그 (중요!)
+    AUDCLNT_STREAMFLAGS_EVENTCALLBACK, // 이벤트 기반 콜백
+    0,                               // 버퍼 지속 시간 (0 = 기본값)
+    0,                               // 주기 (공유 모드에서는 0)
+    &waveFormat,                     // 요청 포맷
+    NULL                             // 오디오 세션 GUID (NULL = 새 세션)
+);
+
+if (FAILED(hr)) {
+    printf("❌ IAudioClient 초기화 실패: 0x%X\n", hr);
+    return hr;
+}
+```
+
+**AUDCLNT_STREAMFLAGS_LOOPBACK**:
+
+- 가장 중요한 플래그!
+- 이게 없으면 일반 캡처 (마이크)
+- 이게 있으면 Loopback (스피커 출력 캡처)
+
+**Sample Rate Conversion (SRC)**:
+
+```
+앱이 48kHz로 재생 중
+    ↓
+우리가 16kHz 요청
+    ↓
+Windows 오디오 엔진이 자동으로 다운샘플링
+    ↓
+우리에게 16kHz 데이터 전달
+```
+
+→ **SpeexDSP 없이도 16kHz 획득 가능!** (MVP에서 활용)
+
+---
+
+#### Step 5: IAudioCaptureClient 획득
+
+```cpp
+IAudioCaptureClient* pCaptureClient = NULL;
+
+hr = pAudioClient->GetService(
+    __uuidof(IAudioCaptureClient),
+    (void**)&pCaptureClient
+);
+
+if (FAILED(hr)) {
+    printf("❌ IAudioCaptureClient 획득 실패\n");
+    return hr;
+}
+
+// 이벤트 핸들 생성 및 설정
+HANDLE hCaptureEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+pAudioClient->SetEventHandle(hCaptureEvent);
+```
+
+---
+
+#### Step 6: 캡처 루프
+
+```cpp
+// 캡처 시작
+hr = pAudioClient->Start();
+if (FAILED(hr)) {
+    printf("❌ 캡처 시작 실패\n");
+    return hr;
+}
+
+printf("✅ 캡처 시작!\n");
+
+// 캡처 루프
+while (!stopFlag) {
+    // 이벤트 대기 (새 데이터 도착 시 신호)
+    DWORD waitResult = WaitForSingleObject(hCaptureEvent, 2000);
+
+    if (waitResult != WAIT_OBJECT_0) {
+        printf("⚠️ 타임아웃 또는 에러\n");
+        continue;
+    }
+
+    // 다음 패킷 크기 확인
+    UINT32 packetLength = 0;
+    hr = pCaptureClient->GetNextPacketSize(&packetLength);
+
+    while (packetLength > 0) {
+        BYTE* pData = NULL;
+        UINT32 numFrames = 0;
+        DWORD flags = 0;
+
+        // 버퍼 가져오기
+        hr = pCaptureClient->GetBuffer(
+            &pData,       // 오디오 데이터 포인터
+            &numFrames,   // 프레임 개수
+            &flags,       // 플래그 (무음 여부 등)
+            NULL,         // 디바이스 위치 (선택)
+            NULL          // QPCPosition (선택)
+        );
+
+        if (FAILED(hr)) {
+            printf("❌ GetBuffer 실패\n");
+            break;
+        }
+
+        // 데이터 처리
+        if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT)) {
+            // 실제 오디오 데이터
+            size_t dataSize = numFrames * waveFormat.nBlockAlign;
+
+            // 콜백 호출 (사용자 정의)
+            if (audioCallback) {
+                audioCallback(pData, dataSize);
+            }
+        }
+
+        // 버퍼 해제 (중요!)
+        hr = pCaptureClient->ReleaseBuffer(numFrames);
+
+        // 다음 패킷
+        hr = pCaptureClient->GetNextPacketSize(&packetLength);
+    }
+}
+
+// 캡처 정지
+pAudioClient->Stop();
+printf("✅ 캡처 정지\n");
+```
+
+**플래그 이해**:
+
+```cpp
+AUDCLNT_BUFFERFLAGS_SILENT (0x2):
+  → 무음 구간 (실제 데이터 없음, 0으로 채워진 버퍼)
+  → 처리 스킵 가능
+
+AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY (0x1):
+  → 데이터 불연속성 (글리치 발생)
+  → 로그 남기기
+```
+
+---
+
+### ProcessLoopbackCapture 래퍼의 장점
+
+**우리가 직접 구현해야 할 것들**:
+
+```
+❌ IActivateAudioInterfaceCompletionHandler 구현 (COM 인터페이스)
+❌ 비동기 완료 이벤트 관리
+❌ 에러 코드 → 문자열 변환
+❌ 참조 카운팅 메모리 관리
+❌ 스레드 안전성 보장
+```
+
+**ProcessLoopbackCapture가 해주는 것**:
+
+```
+✅ 위의 모든 복잡도를 단순한 API로 감춤
+✅ SetCaptureFormat(16000, 16, 1, WAVE_FORMAT_PCM)
+✅ SetTargetProcess(pid)
+✅ SetCallback(myCallback)
+✅ StartCapture() / StopCapture()
+```
+
+**우리 전략**:
+
+```
+1. ProcessLoopbackCapture 코드를 읽으며 WASAPI 패턴 학습
+2. OnVoice에 필요한 부분만 추출하여 재구현
+3. 불필요한 기능 제거 (Pause/Resume은 나중에)
+4. COM DLL 인터페이스에 최적화
+```
+
+---
+
+### 주요 에러 및 해결
+
+#### AUDCLNT_E_DEVICE_IN_USE (0x8889000A)
+
+**원인**: 디바이스가 이미 독점 모드로 사용 중
+
+**해결**:
+
+```cpp
+// ❌ 독점 모드 (Exclusive)
+hr = pAudioClient->Initialize(
+    AUDCLNT_SHAREMODE_EXCLUSIVE,  // 독점!
+    ...
+);
+
+// ✅ 공유 모드 (Shared) - OnVoice는 이걸 써야 함
+hr = pAudioClient->Initialize(
+    AUDCLNT_SHAREMODE_SHARED,  // 공유
+    ...
+);
+```
+
+---
+
+#### AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890008)
+
+**원인**: 요청한 포맷을 디바이스가 지원 안 함
+
+**해결**:
+
+```cpp
+// 방법 1: IsFormatSupported로 먼저 체크
+WAVEFORMATEX* pClosestMatch = NULL;
+hr = pAudioClient->IsFormatSupported(
+    AUDCLNT_SHAREMODE_SHARED,
+    &waveFormat,
+    &pClosestMatch  // 가장 가까운 포맷 제안
+);
+
+if (hr == S_FALSE) {
+    printf("요청 포맷 불가, 대안: %d Hz\n",
+        pClosestMatch->nSamplesPerSec);
+    // pClosestMatch 사용
+}
+
+// 방법 2: GetMixFormat 사용
+WAVEFORMATEX* pMixFormat = NULL;
+hr = pAudioClient->GetMixFormat(&pMixFormat);
+// 디바이스 기본 포맷으로 캡처 후 수동 리샘플링
+```
+
+---
+
+#### E_INVALIDARG (0x80070057)
+
+**원인**: NULL 포인터 또는 잘못된 파라미터
+
+**체크리스트**:
+
+```cpp
+// ✅ 항상 NULL 체크
+if (pAudioClient == NULL) {
+    printf("❌ pAudioClient가 NULL!\n");
+    return E_POINTER;
+}
+
+// ✅ 구조체 초기화
+AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS params = {};  // = {} 필수!
+params.TargetProcessId = pid;
+
+// ✅ PID 유효성 체크
+if (pid == 0) {
+    printf("❌ 잘못된 PID\n");
+    return E_INVALIDARG;
+}
+```
+
+---
+
+### 성능 최적화 팁
+
+#### 1️⃣ 버퍼 크기 최적화
+
+```cpp
+// 작은 버퍼 = 낮은 지연, 높은 CPU
+// 큰 버퍼 = 높은 지연, 낮은 CPU
+
+// OnVoice 권장: 10-20ms
+REFERENCE_TIME bufferDuration = 100000;  // 10ms (100ns 단위)
+
+hr = pAudioClient->Initialize(
+    AUDCLNT_SHAREMODE_SHARED,
+    AUDCLNT_STREAMFLAGS_LOOPBACK,
+    bufferDuration,  // 버퍼 지속 시간
+    0,
+    &waveFormat,
+    NULL
+);
+```
+
+#### 2️⃣ 스레드 우선순위
+
+```cpp
+// 캡처 스레드 우선순위 상승
+DWORD taskIndex = 0;
+HANDLE hTask = AvSetMmThreadCharacteristics(TEXT("Audio"), &taskIndex);
+
+if (hTask == NULL) {
+    printf("⚠️ 스레드 우선순위 설정 실패 (계속 진행 가능)\n");
+}
+
+// ... 캡처 루프 ...
+
+// 정리
+if (hTask != NULL) {
+    AvRevertMmThreadCharacteristics(hTask);
+}
+```
+
+#### 3️⃣ Lock-Free Queue (ProcessLoopbackCapture 옵션)
+
+```cpp
+// 문제: 콜백에서 파일 쓰기/네트워크 전송 → 글리치
+void AudioCallback(BYTE* data, size_t size) {
+    // ❌ 시간 걸리는 작업
+    SendToServer(data, size);  // 네트워크 IO
+    WriteToFile(data, size);   // 디스크 IO
+}
+
+// 해결: Lock-Free Queue로 다른 스레드에 넘기기
+ReaderWriterQueue<AudioChunk> g_queue;
+
+void AudioCallback(BYTE* data, size_t size) {
+    // ✅ 빠른 작업만
+    AudioChunk chunk(data, size);
+    g_queue.enqueue(chunk);  // Lock-free!
+}
+
+void WorkerThread() {
+    AudioChunk chunk;
+    while (running) {
+        if (g_queue.try_dequeue(chunk)) {
+            // ✅ 여기서 느린 작업
+            SendToServer(chunk.data, chunk.size);
+        }
+    }
+}
+```
+
+---
+
+### OnVoice 적용 계획
+
+#### Phase 3 (T+4-6h): 레퍼런스 학습
+
+```
+✅ ProcessLoopbackCapture.h/.cpp 읽기
+✅ 위의 WASAPI 패턴 이해
+✅ 콘솔 PoC로 PID 기반 캡처 테스트
+```
+
+#### Phase 4 (T+6-10h): 재구현
+
+```
+OnVoiceAudioCapture 클래스 작성:
+  - ActivateAudioClient() 구현
+  - InitializeAudioClient() 구현
+  - CaptureLoop() 구현
+  - 에러 처리 체계화
+```
+
+#### Phase 7+ (T+10-40h): COM 통합
+
+```
+ATL DLL에서 OnVoiceAudioCapture 래핑:
+  - StartCapture(pid) → 스레드 생성
+  - OnAudioData 이벤트 → SAFEARRAY 전달
+```
+
+---
+
+## 🎓 학습 체크리스트
+
+**WASAPI 이해도 테스트**:
+
+- [ ] WASAPI가 무엇인지 한 문장으로 설명할 수 있나요?
+- [ ] Loopback Capture와 일반 Capture의 차이를 아나요?
+- [ ] Process-Specific Loopback이 왜 필요한지 설명할 수 있나요?
+- [ ] IAudioClient 초기화 흐름을 그릴 수 있나요?
+- [ ] GetBuffer/ReleaseBuffer의 역할을 아나요?
+- [ ] AUDCLNT_STREAMFLAGS_LOOPBACK 플래그의 의미를 아나요?
+- [ ] 16kHz 샘플레이트 변환이 자동으로 되는 이유를 아나요?
+
+**7개 중 5개 이상 체크** → Phase 3 실습 준비 완료!
+
+---
+
+## 🔖 빠른 참조
+
+### 핵심 인터페이스 체인
+
+```
+IMMDeviceEnumerator (디바이스 찾기)
+  → IMMDevice (특정 디바이스)
+    → IAudioClient (오디오 세션)
+      → IAudioCaptureClient (데이터 읽기)
+```
+
+### 필수 링크 라이브러리
+
+```
+프로젝트 속성 → 링커 → 입력 → 추가 종속성:
+mmdevapi.lib   (ActivateAudioInterfaceAsync)
+avrt.lib       (AvSetMmThreadCharacteristics)
+```
+
+### 중요 플래그
+
+| 플래그                            | 값         | 의미          |
+| --------------------------------- | ---------- | ------------- |
+| AUDCLNT_STREAMFLAGS_LOOPBACK      | 0x00020000 | Loopback 캡처 |
+| AUDCLNT_STREAMFLAGS_EVENTCALLBACK | 0x00040000 | 이벤트 기반   |
+| AUDCLNT_BUFFERFLAGS_SILENT        | 0x2        | 무음 구간     |
+
+---
+
+**마지막 업데이트**: 2025-11-16  
+**다음 학습**: Phase 3 실습 (콘솔 PoC)  
+**참고 자료**: ProcessLoopbackCapture 레포, Microsoft WASAPI 문서
 
 ---
 
