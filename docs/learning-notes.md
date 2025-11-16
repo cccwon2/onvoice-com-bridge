@@ -20,7 +20,7 @@ OnVoice COM 브리지 개발 과정에서 배운 C++ 및 Windows 프로그래밍
 
 ## COM 기초
 
-### 2025-11-16: COM이란 무엇인가?
+### COM이란 무엇인가?
 
 **Component Object Model (COM)**: Windows에서 서로 다른 프로그램이나 언어로 작성된 코드를 연결하는 표준 방식
 
@@ -693,19 +693,9 @@ ptr->Release();                    // 참조 카운트 = 1
 ptr2->Release();                   // 참조 카운트 = 0 → 삭제
 ```
 
----
-
-## 포인터와 참조
-
-### 2025-11-16: 포인터 vs 참조
-
-(Phase 2에서 학습 예정)
-
----
-
 ## WASAPI 오디오 캡처
 
-### 2025-11-16: WASAPI란 무엇인가?
+### WASAPI란 무엇인가?
 
 **Windows Audio Session API (WASAPI)**: Windows Vista 이후 도입된 저수준 오디오 API
 
@@ -773,7 +763,7 @@ FastAPI 서버 (Deepgram STT)
 
 ---
 
-### 2025-11-16: WASAPI Loopback Capture
+### WASAPI Loopback Capture
 
 **Loopback Capture**: "스피커로 나가는 소리"를 중간에 가로채기
 
@@ -1362,7 +1352,7 @@ void WorkerThread() {
 
 ---
 
-### 2025-11-16: ProcessLoopbackCapture 코드 리뷰
+### ProcessLoopbackCapture 코드 리뷰
 
 #### 발견한 핵심 패턴 5가지
 
@@ -1856,23 +1846,115 @@ avrt.lib       (AvSetMmThreadCharacteristics)
 
 ---
 
+## 🎓 Week 0 학습 여정 총정리
+
+### PoC 완성 및 핵심 검증
+
+#### 학습 흐름
+
+```
+COM 기초 학습 (1.5h)
+    ↓
+WASAPI 개념 학습 (1h)
+    ↓
+ProcessLoopbackCapture 코드 리뷰 (1h)
+    ↓
+콘솔 PoC 개발 (2h)
+    ↓
+프로세스 자동 감지 구현 (0.5h)
+    ↓
+✅ PID 기반 캡처 검증 완료!
+```
+
+**총 투입 시간**: 6시간  
+**목표 달성**: 100%
+
+---
+
+#### 검증 완료된 기술
+
+**1. PID 기반 오디오 캡처**
+
+```
+Discord (PID: 15678) → 16kHz PCM → WAV 파일 ✅
+Chrome (PID: 12812) → 16kHz PCM → WAV 파일 ✅
+
+타 앱 소리 격리 확인:
+- Windows 알림음: ❌ 캡처 안 됨
+- YouTube (Chrome): ✅ 캡처됨
+- Spotify: ❌ 캡처 안 됨 (다른 PID)
+```
+
+**2. 프로세스 자동 감지**
+
+```cpp
+// Chrome 브라우저 찾기
+if (cmdLine.find(L"--type=") == std::wstring::npos) {
+    return pid;  // 성공! ✅
+}
+
+// Discord 찾기
+if (exeName == L"Discord.exe") {
+    return pid;  // 성공! ✅
+}
+```
+
+**3. 16kHz 자동 변환**
+
+```
+앱 출력: 48kHz
+Windows 오디오 엔진: 48kHz → 16kHz (자동!)
+우리 캡처: 16kHz PCM ✅
+
+결론: SpeexDSP 불필요!
+```
+
+---
+
+#### OnVoice MVP 가능성 확인
+
+**기술적 실현 가능성**: ✅ 검증 완료
+
+```
+사용자 시나리오:
+1. "Discord 음성 감지 시작" 버튼 클릭
+   → FindDiscordProcess() 자동 호출
+
+2. [내부] WASAPI Process Loopback 시작
+   → Discord PID 기반 캡처
+
+3. [내부] 16kHz mono PCM 스트리밍
+   → Deepgram STT → 유해 표현 감지
+
+4. [결과] Discord 볼륨 자동 조절
+   → native-sound-mixer
+```
+
+**사용자 입장**: PID? 몰라도 됨!  
+**개발자 입장**: 완전 자동화 가능!
+
+---
+
+#### 다음 Week 준비도
+
+**Week 1 목표**: COM 브리지 기초 구축
+
+**준비 완료**:
+
+- ✅ COM 개념 이해
+- ✅ WASAPI 패턴 학습
+- ✅ 레퍼런스 코드 분석
+- ✅ 실전 검증 완료
+
+**자신감 레벨**: 🔥🔥🔥
+
+```
+Before: "WASAPI? COM? 어렵겠지?"
+After:  "PoC 돌아가는 거 봤는데 이제 COM만 감싸면 되겠네!"
+```
+
+---
+
 **마지막 업데이트**: 2025-11-16  
-**다음 학습**: Phase 3 실습 (콘솔 PoC)  
-**참고 자료**: ProcessLoopbackCapture 레포, Microsoft WASAPI 문서
-
----
-
-## ATL 프로젝트
-
-(Phase 7에서 학습 예정)
-
----
-
-## 빌드 시스템
-
-(필요 시 추가 예정)
-
----
-
-**마지막 업데이트**: 2025-11-16  
-**다음 학습 주제**: 포인터와 참조 (Phase 2)
+**Week 0 완료**: ✅  
+**다음 목표**: Visual Studio 2026 + ATL 프로젝트
