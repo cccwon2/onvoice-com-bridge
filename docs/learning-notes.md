@@ -7,6 +7,10 @@ OnVoice COM 브리지 개발 과정에서 배운 C++ 및 Windows 프로그래밍
 ## 목차
 
 - [COM 기초](#com-기초)
+  - [COM이란 무엇인가?](#com이란-무엇인가)
+  - [핵심 개념 5가지](#핵심-개념-5가지)
+  - [OnVoice에서 왜 필요한가?](#onvoice에서-왜-필요한가)
+  - [실전 예제](#실전-예제)
 - [포인터와 참조](#포인터와-참조)
 - [WASAPI 오디오 캡처](#wasapi-오디오-캡처)
 - [ATL 프로젝트](#atl-프로젝트)
@@ -16,44 +20,678 @@ OnVoice COM 브리지 개발 과정에서 배운 C++ 및 Windows 프로그래밍
 
 ## COM 기초
 
-### 2025-11-16: COM이란?
+### 2025-11-16: COM이란 무엇인가?
 
-**Component Object Model (COM)**: Windows에서 프로그램 간 통신을 위한 표준 방식
+**Component Object Model (COM)**: Windows에서 서로 다른 프로그램이나 언어로 작성된 코드를 연결하는 표준 방식
 
-**핵심 개념 3가지**:
+#### 🏠 실생활 비유
 
-1. **IUnknown**: 모든 COM 인터페이스의 부모 클래스
+COM은 **아파트 관리 규칙**과 같습니다:
 
-   - `QueryInterface()`: 다른 인터페이스 요청
-   - `AddRef()`: 참조 카운트 +1
-   - `Release()`: 참조 카운트 -1 (0이 되면 객체 삭제)
+```
+아파트(Windows) 안에 여러 가구(프로그램)가 살고 있습니다.
 
-2. **HRESULT**: COM 함수의 반환값
+❌ 규칙이 없다면:
+- 각 가구가 마음대로 복도 사용 → 충돌
+- 쓰레기를 아무데나 버림 → 메모리 누수
+- 옆집과 소통 방법이 제각각 → 호환성 문제
 
-   - `S_OK` (0x00000000): 성공
-   - `E_FAIL` (0x80004005): 일반 실패
-   - `E_POINTER` (0x80004003): NULL 포인터 에러
-
-3. **참조 카운팅**: 메모리 누수 방지를 위한 자동 메모리 관리
-
-```cpp
-   IMMDevice* device = NULL;
-   enumerator->GetDefaultAudioEndpoint(..., &device);  // AddRef 자동 호출
-   // ... device 사용 ...
-   device->Release();  // 참조 카운트 -1, 0이 되면 자동 삭제
+✅ COM 규칙이 있으면:
+- 정해진 방식으로만 소통 (IUnknown 인터페이스)
+- 쓰레기는 본인이 치움 (참조 카운팅)
+- 모든 가구가 같은 규칙 사용 (표준 인터페이스)
 ```
 
-**왜 필요한가?**
+#### 🎯 OnVoice에서의 역할
 
-- C++에는 가비지 컬렉션이 없어서 수동으로 메모리 관리 필요
-- 여러 곳에서 같은 객체를 참조할 때 누가 delete 해야 할지 모호함
-- 참조 카운팅으로 "마지막 사용자가 자동으로 삭제"
+```
+C++ DLL (오디오 캡처 엔진)
+    ↓ COM 인터페이스
+JavaScript (Electron)
+```
 
-**배운 점**:
+**문제**: C++과 JavaScript는 완전히 다른 언어
 
-- ✅ `CoInitialize()`를 프로그램 시작 시 호출하지 않으면 `E_NOTINITIALIZED` 에러!
-- ✅ 모든 COM 객체는 반드시 `Release()` 호출해야 함 (메모리 누수 방지)
-- ✅ HRESULT는 `SUCCEEDED()`, `FAILED()` 매크로로 체크
+- C++의 포인터를 JavaScript가 이해 못함
+- C++의 함수를 JavaScript가 직접 호출 못함
+
+**해결**: COM이 "번역기" 역할
+
+- C++ 함수를 COM 인터페이스로 포장
+- JavaScript(winax)가 COM 표준 방식으로 호출
+- 데이터도 COM 규격에 맞춰 변환
+
+---
+
+### 핵심 개념 5가지
+
+#### 1️⃣ IUnknown: 모든 COM 객체의 DNA
+
+**비유**: 사람의 혈액형처럼, 모든 COM 객체가 가진 기본 특성
+
+```cpp
+// 모든 COM 인터페이스는 IUnknown을 상속받음
+interface IUnknown {
+    // Q: 당신은 다른 능력도 있나요?
+    HRESULT QueryInterface(REFIID riid, void** ppvObject);
+
+    // Q: 당신을 사용하는 사람이 늘어났어요
+    ULONG AddRef();
+
+    // Q: 당신을 다 썼어요
+    ULONG Release();
+};
+```
+
+**3가지 메서드 상세**:
+
+##### `QueryInterface()`: "당신은 이것도 할 수 있나요?"
+
+```cpp
+// 예시: 오디오 디바이스에게 묻기
+IMMDevice* device = NULL;
+// "당신은 IAudioClient 기능도 있나요?"
+HRESULT hr = device->QueryInterface(
+    __uuidof(IAudioClient),  // "IAudioClient를 할 수 있나요?"
+    (void**)&audioClient     // "할 수 있으면 여기에 넣어주세요"
+);
+
+if (SUCCEEDED(hr)) {
+    // 가능합니다! audioClient를 사용하세요
+}
+```
+
+**실생활 비유**:
+
+```
+김원: "택배 기사님, 요리도 할 수 있나요?"
+택배 기사: "아니요, 저는 배달만 합니다" (E_NOINTERFACE 반환)
+
+김원: "택배 기사님, 짐 나르는 것도 할 수 있나요?"
+택배 기사: "네, 그건 제 본업이죠!" (S_OK 반환, 인터페이스 포인터 제공)
+```
+
+##### `AddRef()`: "나 이거 쓸게요!" (참조 카운트 +1)
+
+```cpp
+IMMDevice* device1 = NULL;
+enumerator->GetDefaultAudioEndpoint(..., &device1);
+// 내부적으로 AddRef() 자동 호출 → 참조 카운트 = 1
+
+IMMDevice* device2 = device1;  // 같은 객체를 가리킴
+device2->AddRef();  // 명시적 호출 → 참조 카운트 = 2
+
+// 이제 이 디바이스를 2곳에서 사용 중
+```
+
+##### `Release()`: "나 다 썼어요!" (참조 카운트 -1)
+
+```cpp
+device1->Release();  // 참조 카운트 2 → 1
+device2->Release();  // 참조 카운트 1 → 0
+// 0이 되면 → 객체 자동 삭제 (메모리 해제)
+```
+
+**실생활 비유**:
+
+```
+공유 도서 (COM 객체)
+
+김원: 책 빌림 → AddRef() → 참조 카운트 = 1
+철수: 같은 책 빌림 → AddRef() → 참조 카운트 = 2
+
+김원: 책 반납 → Release() → 참조 카운트 = 1
+철수: 책 반납 → Release() → 참조 카운트 = 0
+→ 도서관이 책을 서가로 회수 (메모리 해제)
+```
+
+**중요 규칙**:
+
+```
+✅ DO: AddRef() 횟수 = Release() 횟수 (반드시!)
+❌ DON'T: Release()를 빼먹으면 → 메모리 누수
+❌ DON'T: 과도한 Release() → 크래시 (이미 삭제된 객체 접근)
+```
+
+---
+
+#### 2️⃣ HRESULT: COM 함수의 "성공/실패 보고서"
+
+**타입**: 32비트 정수 (16진수로 표현)
+
+```cpp
+typedef long HRESULT;  // 사실은 정수
+
+// 성공 코드 (최상위 비트 = 0)
+#define S_OK           0x00000000  // 완벽한 성공
+#define S_FALSE        0x00000001  // 성공했지만 특이 사항 있음
+
+// 실패 코드 (최상위 비트 = 1)
+#define E_FAIL         0x80004005  // 일반적인 실패
+#define E_POINTER      0x80004003  // NULL 포인터 에러
+#define E_NOTIMPL      0x80004001  // 구현되지 않은 기능
+#define E_OUTOFMEMORY  0x8007000E  // 메모리 부족
+```
+
+**사용 방법**:
+
+```cpp
+HRESULT hr;  // 결과를 담을 변수
+
+// 방법 1: SUCCEEDED() 매크로
+hr = device->Activate(...);
+if (SUCCEEDED(hr)) {
+    printf("성공!\n");
+} else {
+    printf("실패: 0x%X\n", hr);
+}
+
+// 방법 2: FAILED() 매크로 (더 일반적)
+hr = audioClient->Initialize(...);
+if (FAILED(hr)) {
+    printf("초기화 실패: 0x%X\n", hr);
+    return hr;  // 에러를 호출자에게 전파
+}
+
+// 방법 3: 직접 비교 (특정 성공 케이스 체크)
+hr = enumerator->GetDevice(id, &device);
+if (hr == S_OK) {
+    printf("디바이스 찾음!\n");
+} else if (hr == E_NOTFOUND) {
+    printf("디바이스 없음\n");
+}
+```
+
+**실생활 비유**:
+
+```
+택배 기사가 배달 결과를 보고합니다:
+
+S_OK (0x00000000): "정상 배달 완료! 집 앞에 놓음"
+S_FALSE (0x00000001): "배달은 했는데 경비실에 맡김"
+E_FAIL (0x80004005): "배달 실패 (이유 불명)"
+E_POINTER (0x80004003): "주소가 잘못됨 (NULL)"
+E_NOTFOUND (0x80070490): "그 주소에 사람이 안 삼"
+```
+
+---
+
+#### 3️⃣ CoInitialize / CoUninitialize: COM 세상의 입장권
+
+**비유**: 놀이공원 입장/퇴장
+
+```cpp
+int main() {
+    // 🎫 입장권 구매 (COM 초기화)
+    HRESULT hr = CoInitialize(NULL);
+    if (FAILED(hr)) {
+        printf("놀이공원 문 닫혔음!\n");
+        return 1;
+    }
+
+    // 🎢 놀이기구 타기 (COM 객체 사용)
+    IMMDeviceEnumerator* enumerator = NULL;
+    hr = CoCreateInstance(..., &enumerator);
+
+    // ... 작업 ...
+
+    enumerator->Release();
+
+    // 🚪 퇴장 (COM 해제)
+    CoUninitialize();
+    return 0;
+}
+```
+
+**중요 규칙**:
+
+```
+✅ CoInitialize()는 프로그램 당 1번 (main 함수 시작 부분)
+✅ CoUninitialize()는 프로그램 당 1번 (main 함수 끝 부분)
+✅ 중간에 COM 객체를 아무리 많이 만들어도 괜찮음
+❌ CoInitialize() 없이 COM 사용 → E_NOTINITIALIZED 에러
+```
+
+**멀티스레드 주의**:
+
+```cpp
+// 단일 스레드 (STA): 대부분의 경우
+CoInitialize(NULL);
+
+// 멀티스레드 (MTA): 서버 프로그램
+CoInitializeEx(NULL, COINIT_MULTITHREADED);
+```
+
+---
+
+#### 4️⃣ CoCreateInstance(): COM 객체 공장
+
+**비유**: 전자제품 주문
+
+```cpp
+IMMDeviceEnumerator* enumerator = NULL;
+
+HRESULT hr = CoCreateInstance(
+    __uuidof(MMDeviceEnumerator),      // 주문서: "오디오 디바이스 열거자 주세요"
+    NULL,                               // 중간 상인 없음 (직접 구매)
+    CLSCTX_ALL,                         // 어디서든 만들어줘 (같은 프로세스 or 다른 프로세스)
+    __uuidof(IMMDeviceEnumerator),      // 포장: "IMMDeviceEnumerator 인터페이스로 포장"
+    (void**)&enumerator                 // 배송지: enumerator 변수
+);
+
+if (SUCCEEDED(hr)) {
+    // 제품 도착! 사용 가능
+    enumerator->GetDefaultAudioEndpoint(...);
+
+    // 다 쓰면 반납
+    enumerator->Release();
+}
+```
+
+**매개변수 설명**:
+
+| 매개변수       | 의미                     | OnVoice 사용 예                 |
+| -------------- | ------------------------ | ------------------------------- |
+| `rclsid`       | 만들 객체 ID (CLSID)     | `__uuidof(MMDeviceEnumerator)`  |
+| `pUnkOuter`    | 집합 객체 (고급)         | 보통 `NULL`                     |
+| `dwClsContext` | 실행 위치                | `CLSCTX_ALL` (어디든)           |
+| `riid`         | 받을 인터페이스 ID (IID) | `__uuidof(IMMDeviceEnumerator)` |
+| `ppv`          | 결과 받을 포인터         | `(void**)&enumerator`           |
+
+---
+
+#### 5️⃣ 참조 카운팅 (Reference Counting): 자동 메모리 관리
+
+**문제 상황**:
+
+```cpp
+// ❌ C++ 일반 포인터의 문제
+MyClass* obj = new MyClass();
+
+void FunctionA(MyClass* obj) {
+    // 나는 이 객체를 계속 쓸 건데...
+}
+
+void FunctionB(MyClass* obj) {
+    delete obj;  // 내가 지웠어!
+}
+
+FunctionA(obj);
+FunctionB(obj);
+// FunctionA로 돌아가면? → 크래시! (이미 삭제된 객체 사용)
+```
+
+**COM의 해결책**:
+
+```cpp
+// ✅ COM 객체의 참조 카운팅
+IMMDevice* device = NULL;
+enumerator->GetDefaultAudioEndpoint(..., &device);
+// 내부적으로: device의 참조 카운트 = 1
+
+void FunctionA(IMMDevice* device) {
+    device->AddRef();  // 참조 카운트 = 2 (나도 쓸게!)
+    // ... 작업 ...
+    device->Release();  // 참조 카운트 = 1 (나는 다 썼어)
+}
+
+void FunctionB(IMMDevice* device) {
+    device->Release();  // 참조 카운트 = 0 → 자동 삭제
+}
+
+FunctionA(device);  // 안전: device는 여전히 유효
+FunctionB(device);  // 안전: 마지막 사용자가 삭제
+```
+
+**참조 카운트 규칙**:
+
+| 상황             | 해야 할 일                  | 예시                                    |
+| ---------------- | --------------------------- | --------------------------------------- |
+| 객체를 받았을 때 | 이미 AddRef됨 (추가 호출 X) | `GetDefaultAudioEndpoint(&device)`      |
+| 객체를 복사할 때 | `AddRef()` 호출             | `device2 = device1; device2->AddRef();` |
+| 다 쓴 후         | `Release()` 호출            | `device->Release();`                    |
+| 함수에 전달할 때 | 받는 쪽에서 결정            | 보통 AddRef 안 함                       |
+
+**실생활 비유 (최종판)**:
+
+```
+도서관 공유 책 시스템:
+
+1. 김원이 책 대출 → 카운터 = 1
+2. 철수도 같은 책 필요 → AddRef() → 카운터 = 2
+3. 김원 반납 → Release() → 카운터 = 1
+4. 철수 반납 → Release() → 카운터 = 0
+   → 사서가 자동으로 책을 서가에 꽂음 (메모리 해제)
+
+규칙:
+- 빌릴 때마다 카운터 +1
+- 반납할 때마다 카운터 -1
+- 카운터가 0이 되면 책 회수
+```
+
+---
+
+### OnVoice에서 왜 필요한가?
+
+#### 우리의 아키텍처
+
+```
+┌─────────────────────────────────────────┐
+│  Electron (JavaScript)                  │
+│  - React UI                             │
+│  - 사용자 인터랙션                        │
+└──────────────┬──────────────────────────┘
+               │ winax (COM 클라이언트)
+               ↓
+┌─────────────────────────────────────────┐
+│  C++ COM DLL                            │
+│  - WASAPI 오디오 캡처                    │
+│  - PID 기반 프로세스 격리                 │
+│  - SpeexDSP 리샘플링                     │
+└─────────────────────────────────────────┘
+```
+
+#### COM이 해결하는 3가지 문제
+
+**1️⃣ 언어 장벽 해소**
+
+```
+문제: JavaScript는 C++ 포인터를 이해 못함
+
+해결: COM 인터페이스 = 공통 언어
+- C++: "나는 IDispatch 인터페이스를 제공해"
+- JavaScript (winax): "나는 IDispatch를 호출할 수 있어"
+→ 서로 소통 가능!
+```
+
+**2️⃣ 프로세스 간 통신**
+
+```
+Electron Main 프로세스 ←→ C++ DLL
+
+COM이 없다면:
+- 공유 메모리 수동 관리 (복잡)
+- 파이프/소켓 프로토콜 직접 구현 (번거로움)
+
+COM이 있다면:
+- new winax.Object('OnVoiceAudioBridge.Capture')
+- bridge.Start(processId);
+→ 간단!
+```
+
+**3️⃣ 메모리 안전성**
+
+```
+WASAPI 객체들 (IMMDevice, IAudioClient 등)은 모두 COM 객체
+→ 참조 카운팅으로 자동 메모리 관리
+→ 메모리 누수 방지
+```
+
+---
+
+### 실전 예제
+
+#### 예제 1: 기본 COM 사용 패턴
+
+```cpp
+#include <windows.h>
+#include <mmdeviceapi.h>
+#include <iostream>
+
+int main() {
+    // ========== 1단계: COM 초기화 ==========
+    HRESULT hr = CoInitialize(NULL);
+    if (FAILED(hr)) {
+        printf("❌ COM 초기화 실패: 0x%X\n", hr);
+        return 1;
+    }
+    printf("✅ COM 초기화 성공\n");
+
+    // ========== 2단계: COM 객체 생성 ==========
+    IMMDeviceEnumerator* enumerator = NULL;
+    hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator),        // CLSID: 만들 객체
+        NULL,                                 // pUnkOuter
+        CLSCTX_ALL,                          // 실행 위치
+        __uuidof(IMMDeviceEnumerator),       // IID: 받을 인터페이스
+        (void**)&enumerator                  // 결과 포인터
+    );
+
+    if (FAILED(hr)) {
+        printf("❌ 디바이스 열거자 생성 실패: 0x%X\n", hr);
+        CoUninitialize();
+        return 1;
+    }
+    printf("✅ 디바이스 열거자 생성 성공\n");
+
+    // ========== 3단계: COM 객체 사용 ==========
+    IMMDevice* device = NULL;
+    hr = enumerator->GetDefaultAudioEndpoint(
+        eRender,   // 스피커/헤드폰
+        eConsole,  // 일반 사용
+        &device    // 결과 받을 포인터 (내부적으로 AddRef 됨)
+    );
+
+    if (FAILED(hr)) {
+        printf("❌ 기본 오디오 디바이스 가져오기 실패: 0x%X\n", hr);
+        enumerator->Release();  // 정리!
+        CoUninitialize();
+        return 1;
+    }
+    printf("✅ 오디오 디바이스 획득 성공\n");
+
+    // ========== 4단계: 정리 (역순!) ==========
+    // 규칙: 나중에 만든 것부터 Release
+    device->Release();        // device 먼저
+    enumerator->Release();    // enumerator 나중에
+
+    // COM 해제
+    CoUninitialize();
+    printf("✅ 모든 리소스 정리 완료\n");
+
+    return 0;
+}
+```
+
+**출력 예시**:
+
+```
+✅ COM 초기화 성공
+✅ 디바이스 열거자 생성 성공
+✅ 오디오 디바이스 획득 성공
+✅ 모든 리소스 정리 완료
+```
+
+---
+
+#### 예제 2: 에러 처리 패턴
+
+```cpp
+HRESULT CaptureAudio() {
+    HRESULT hr;
+    IMMDeviceEnumerator* enumerator = NULL;
+    IMMDevice* device = NULL;
+    IAudioClient* audioClient = NULL;
+
+    // COM 초기화
+    hr = CoInitialize(NULL);
+    if (FAILED(hr)) {
+        return hr;  // 즉시 반환
+    }
+
+    // 디바이스 열거자 생성
+    hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator),
+        NULL,
+        CLSCTX_ALL,
+        __uuidof(IMMDeviceEnumerator),
+        (void**)&enumerator
+    );
+    if (FAILED(hr)) {
+        goto cleanup;  // 정리 코드로 점프
+    }
+
+    // 기본 디바이스 가져오기
+    hr = enumerator->GetDefaultAudioEndpoint(
+        eRender,
+        eConsole,
+        &device
+    );
+    if (FAILED(hr)) {
+        goto cleanup;
+    }
+
+    // IAudioClient 인터페이스 가져오기
+    hr = device->Activate(
+        __uuidof(IAudioClient),
+        CLSCTX_ALL,
+        NULL,
+        (void**)&audioClient
+    );
+    if (FAILED(hr)) {
+        goto cleanup;
+    }
+
+    // ... 오디오 캡처 작업 ...
+
+cleanup:
+    // 안전한 정리: NULL 체크 후 Release
+    if (audioClient != NULL) {
+        audioClient->Release();
+    }
+    if (device != NULL) {
+        device->Release();
+    }
+    if (enumerator != NULL) {
+        enumerator->Release();
+    }
+
+    CoUninitialize();
+    return hr;
+}
+```
+
+**포인트**:
+
+- `goto cleanup` 패턴: 에러 발생 시 일관된 정리
+- NULL 체크: Release 전에 항상 확인
+- 역순 정리: 나중에 만든 것부터 해제
+
+---
+
+#### 예제 3: 스마트 포인터 (고급, 나중에 사용)
+
+COM 작업을 더 안전하게:
+
+```cpp
+#include <wrl/client.h>  // Windows Runtime Library
+using Microsoft::WRL::ComPtr;
+
+HRESULT CaptureAudioSmart() {
+    HRESULT hr = CoInitialize(NULL);
+    if (FAILED(hr)) return hr;
+
+    // ComPtr: 자동으로 AddRef/Release 관리
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    ComPtr<IMMDevice> device;
+    ComPtr<IAudioClient> audioClient;
+
+    // CoCreateInstance
+    hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator),
+        nullptr,
+        CLSCTX_ALL,
+        IID_PPV_ARGS(&enumerator)  // 타입 안전 매크로
+    );
+    if (FAILED(hr)) {
+        CoUninitialize();
+        return hr;
+    }
+
+    // GetDefaultAudioEndpoint
+    hr = enumerator->GetDefaultAudioEndpoint(
+        eRender,
+        eConsole,
+        &device
+    );
+    // ... 작업 ...
+
+    // 함수 끝나면 자동으로 Release! (스마트 포인터 소멸자)
+    CoUninitialize();
+    return hr;
+}
+```
+
+**장점**:
+
+- `Release()` 호출 불필요 (자동)
+- 예외 발생해도 안전 (RAII 패턴)
+- 메모리 누수 거의 불가능
+
+**단점**:
+
+- 초보자에겐 복잡 (템플릿 문법)
+- Phase 1-8에서는 수동 관리로 학습 추천
+
+---
+
+## 🎓 학습 체크리스트
+
+### COM 기본 개념 이해도 테스트
+
+**자신에게 물어보세요**:
+
+- [ ] COM이 무엇인지 한 문장으로 설명할 수 있나요?
+- [ ] IUnknown의 3가지 메서드를 말할 수 있나요?
+- [ ] AddRef()와 Release()의 차이를 설명할 수 있나요?
+- [ ] HRESULT를 SUCCEEDED() 매크로로 체크할 수 있나요?
+- [ ] CoInitialize()를 어디에 써야 하는지 아나요?
+- [ ] QueryInterface가 왜 필요한지 이해하나요?
+- [ ] 참조 카운팅의 원리를 설명할 수 있나요?
+
+**7개 중 5개 이상 체크** → Phase 1 진행 준비 완료!  
+**4개 이하** → 이 문서를 다시 한 번 읽어보세요
+
+---
+
+## 🔖 빠른 참조 카드
+
+### HRESULT 값
+
+| 코드             | 16진수     | 의미            | 대응              |
+| ---------------- | ---------- | --------------- | ----------------- |
+| S_OK             | 0x00000000 | 성공            | 계속 진행         |
+| S_FALSE          | 0x00000001 | 성공 (주의사항) | 조건 확인         |
+| E_FAIL           | 0x80004005 | 일반 실패       | 로그 후 종료      |
+| E_POINTER        | 0x80004003 | NULL 포인터     | NULL 체크         |
+| E_NOTIMPL        | 0x80004001 | 미구현          | 다른 방법 시도    |
+| E_OUTOFMEMORY    | 0x8007000E | 메모리 부족     | 리소스 해제       |
+| E_NOTINITIALIZED | 0x800401F0 | COM 미초기화    | CoInitialize 호출 |
+
+### 매크로
+
+```cpp
+SUCCEEDED(hr)  // hr >= 0 (성공)
+FAILED(hr)     // hr < 0 (실패)
+```
+
+### COM 객체 생명주기
+
+```cpp
+// 1. 생성
+CoCreateInstance(..., &ptr);       // 참조 카운트 = 1
+
+// 2. 사용
+ptr->SomeMethod();
+
+// 3. 복사 (필요시)
+ptr2 = ptr;
+ptr2->AddRef();                    // 참조 카운트 = 2
+
+// 4. 정리
+ptr->Release();                    // 참조 카운트 = 1
+ptr2->Release();                   // 참조 카운트 = 0 → 삭제
+```
 
 ---
 
@@ -61,47 +699,27 @@ OnVoice COM 브리지 개발 과정에서 배운 C++ 및 Windows 프로그래밍
 
 ### 2025-11-16: 포인터 vs 참조
 
-(학습 진행하면서 추가 예정)
+(Phase 2에서 학습 예정)
 
 ---
 
 ## WASAPI 오디오 캡처
 
-(Phase 3 진행하면서 추가 예정)
+(Phase 3에서 학습 예정)
 
 ---
 
 ## ATL 프로젝트
 
-(Phase 7 진행하면서 추가 예정)
+(Phase 7에서 학습 예정)
 
 ---
 
 ## 빌드 시스템
 
-(필요할 때 추가 예정)
+(필요 시 추가 예정)
 
 ---
 
-## 🔖 빠른 참조
-
-### 자주 쓰는 HRESULT 값
-
-| 코드          | 16진수     | 의미          |
-| ------------- | ---------- | ------------- |
-| S_OK          | 0x00000000 | 성공          |
-| E_FAIL        | 0x80004005 | 일반 실패     |
-| E_POINTER     | 0x80004003 | NULL 포인터   |
-| E_NOTIMPL     | 0x80004001 | 구현되지 않음 |
-| E_OUTOFMEMORY | 0x8007000E | 메모리 부족   |
-
-### 자주 쓰는 매크로
-
-```cpp
-SUCCEEDED(hr)  // hr이 성공 코드인지 확인
-FAILED(hr)     // hr이 실패 코드인지 확인
-```
-
----
-
-**마지막 업데이트**: 2025-11-16
+**마지막 업데이트**: 2025-11-16  
+**다음 학습 주제**: 포인터와 참조 (Phase 2)
