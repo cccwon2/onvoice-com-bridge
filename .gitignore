@@ -416,3 +416,34 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# ========================================
+# OnVoice 프로젝트 커스텀 설정
+# ========================================
+
+# 테스트 오디오 파일 (용량 큼)
+*.wav
+*.mp3
+*.flac
+test_audio/
+sample_audio/
+
+# 빌드 아티팩트 (추가)
+*.dll
+*.exe
+
+# Node.js (winax 테스트용)
+package-lock.json
+yarn.lock
+
+# 개인 학습 노트 중 민감 정보
+docs/private/
+
+# 임시 실험 코드
+scratch/
+temp/
+playground/
+
+# Windows 썸네일
+Thumbs.db
+Desktop.ini
