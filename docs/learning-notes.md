@@ -1727,10 +1727,59 @@ m_pAudioClient = NULL;
 
 ---
 
-**마지막 업데이트**: 2025-11-16  
-**다음 단계**: Phase 1 시작 (Visual Studio 설치)
+### Chrome 프로세스 구조 이해
 
----
+#### Chrome의 멀티프로세스 아키텍처
+
+**문제**: Chrome은 하나의 앱이지만 여러 프로세스로 실행됨
+
+```
+chrome.exe                      ← 브라우저 (메인 프로세스)
+chrome.exe --type=gpu-process   ← GPU 프로세스
+chrome.exe --type=renderer      ← 렌더러 (각 탭)
+chrome.exe --type=utility       ← 유틸리티 (Audio Service 등)
+```
+
+**오디오 재생**: 브라우저 프로세스가 관리!
+
+#### 자동 감지 전략
+
+**방법 1: 명령줄 인수 확인** (최선)
+
+```cpp
+// --type= 플래그가 없는 chrome.exe = 브라우저 프로세스
+if (cmdLine.find(L"--type=") == std::wstring::npos) {
+    // 브라우저 프로세스 발견!
+}
+```
+
+**방법 2: 메모리 기준** (Fallback)
+
+```cpp
+// 메모리가 가장 큰 chrome.exe = 브라우저 프로세스 (대부분)
+```
+
+**방법 3: Chrome 내부 작업 관리자** (수동)
+
+```
+Shift + ESC → 브라우저 프로세스 PID 확인
+```
+
+#### 배운 점
+
+- Chrome의 프로세스 격리 (Process Isolation)
+- 명령줄 인수로 프로세스 타입 구분
+- NtQueryInformationProcess API 사용
+- PEB (Process Environment Block) 접근
+
+#### OnVoice 적용
+
+```
+사용자가 "Chrome 음성 감지" 선택
+  → 자동으로 브라우저 프로세스 PID 찾기
+  → WASAPI Process Loopback 시작
+  → 사용자는 PID를 몰라도 됨!
+```
 
 ### OnVoice 적용 계획
 
