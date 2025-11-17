@@ -1,0 +1,18 @@
+﻿// HelloCOM.idl: HelloCOM의 IDL 소스
+//
+
+// 이 파일은 MIDL 도구에 의해 처리되어
+// 형식 라이브러리(HelloCOM.tlb) 및 마샬링 코드를 생성합니다.
+
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+	uuid(54b80cd5-fcd6-46b0-a39b-792cfbf5f4fa),
+	version(1.0),
+]
+library HelloCOMLib
+{
+	importlib("stdole2.tlb");
+};
+
