@@ -2,7 +2,6 @@
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <iostream>
-// ✅ Phase 4를 위한 추가 헤더
 #include <mfapi.h>
 
 #pragma comment(lib, "mmdevapi.lib")
@@ -10,10 +9,44 @@
 #pragma comment(lib, "mfplat.lib")
 
 // ========================================
+// ✅ 수동 타입 정의 (SDK 호환성 보장)
+// ========================================
+
+// 이미 정의되어 있는지 확인
+#ifndef AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS
+
+// ProcessLoopbackMode enum 정의
+typedef enum ProcessLoopbackMode {
+    PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE = 0,
+    PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE = 1
+} ProcessLoopbackMode;
+
+// AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS 구조체 정의
+typedef struct AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
+    DWORD TargetProcessId;                      // 캡처할 프로세스 PID
+    ProcessLoopbackMode ProcessLoopbackMode;    // 캡처 모드
+} AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS;
+
+// AUDIOCLIENT_ACTIVATION_TYPE enum 정의
+typedef enum AUDIOCLIENT_ACTIVATION_TYPE {
+    AUDIOCLIENT_ACTIVATION_TYPE_DEFAULT = 0,
+    AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1
+} AUDIOCLIENT_ACTIVATION_TYPE;
+
+// AUDIOCLIENT_ACTIVATION_PARAMS 구조체 정의
+typedef struct AUDIOCLIENT_ACTIVATION_PARAMS {
+    AUDIOCLIENT_ACTIVATION_TYPE ActivationType;
+    union {
+        AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS ProcessLoopbackParams;
+    };
+} AUDIOCLIENT_ACTIVATION_PARAMS;
+
+#endif  // AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS
+
+// ========================================
 // Phase 4.2: 비동기 완료 핸들러 클래스
 // ========================================
 
-// 1️⃣ 클래스 선언 (빈 스켈레톤)
 class ActivateAudioInterfaceCompletionHandler :
     public IActivateAudioInterfaceCompletionHandler  // COM 인터페이스 상속
 {
@@ -230,12 +263,52 @@ int main() {
     printf("✅ Phase 4.1 완료!\n\n");
 
     // ========================================
-    // 정리 (역순으로 한 번만!)
+    // Phase 4.3: PID 파라미터 설정
     // ========================================
-    CoTaskMemFree(deviceIdString);  // deviceIdString 해제
-    device->Release();              // device 해제
-    enumerator->Release();          // enumerator 해제
-    CoUninitialize();               // COM 해제
+    printf("\n=== Phase 4.3: PID 기반 캡처 시작 ===\n");
+
+    // 1️⃣ 대상 PID 설정 (하드코딩)
+    // ⚠️ TODO: 위에서 확인한 실제 PID로 변경!
+    DWORD targetPid = 4488;  // ← 여기에 확인한 Chrome PID 입력!
+
+    printf("대상 PID: %d\n", targetPid);
+    printf("프로세스: Chrome 브라우저 (추정)\n");
+
+    // 2️⃣ Process Loopback 파라미터 설정
+    AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS loopbackParams = {};
+    loopbackParams.TargetProcessId = targetPid;
+    loopbackParams.ProcessLoopbackMode =
+        PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+
+    printf("모드: INCLUDE_TARGET_PROCESS_TREE (자식 프로세스 포함)\n");
+
+    // 3️⃣ Activation 파라미터 설정
+    AUDIOCLIENT_ACTIVATION_PARAMS activationParams = {};
+    activationParams.ActivationType =
+        AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+    activationParams.ProcessLoopbackParams = loopbackParams;
+
+    printf("활성화 타입: PROCESS_LOOPBACK\n");
+
+    // 4️⃣ PROPVARIANT로 래핑
+    PROPVARIANT activateParams;
+    PropVariantInit(&activateParams);
+    activateParams.vt = VT_BLOB;
+    activateParams.blob.cbSize = sizeof(activationParams);
+    activateParams.blob.pBlobData = (BYTE*)&activationParams;
+
+    printf("PROPVARIANT 래핑 완료 (크기: %d 바이트)\n",
+        activateParams.blob.cbSize);
+
+    printf("✅ Phase 4.3 완료!\n\n");
+
+    // ========================================
+    // 임시 정리 (Phase 4.3 테스트용)
+    // ========================================
+    CoTaskMemFree(deviceIdString);
+    device->Release();
+    enumerator->Release();
+    CoUninitialize();
 
     // ✅ 여기서 대기!
     printf("\nEnter 키를 눌러 종료...\n");
