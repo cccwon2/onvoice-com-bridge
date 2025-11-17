@@ -1,226 +1,245 @@
-﻿#include <iostream>
-#include <windows.h>
+﻿#include <windows.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
-#include <avrt.h>
+#include <iostream>
+// ✅ Phase 4를 위한 추가 헤더
+#include <mfapi.h>
 
-// 링커 설정
-#pragma comment(lib, "ole32.lib")
-#pragma comment(lib, "oleaut32.lib")
+#pragma comment(lib, "mmdevapi.lib")
 #pragma comment(lib, "avrt.lib")
+#pragma comment(lib, "mfplat.lib")
 
-using namespace std;
+// ========================================
+// Phase 4.2: 비동기 완료 핸들러 클래스
+// ========================================
 
-int main()
+// 1️⃣ 클래스 선언 (빈 스켈레톤)
+class ActivateAudioInterfaceCompletionHandler :
+    public IActivateAudioInterfaceCompletionHandler  // COM 인터페이스 상속
 {
-    cout << "=== OnVoice - 기본 오디오 캡처 테스트 ===" << endl << endl;
+private:
+    // COM 참조 카운팅 (중요!)
+    LONG m_refCount;
 
-    // ===== 1단계: COM 초기화 =====
-    HRESULT hr = CoInitialize(nullptr);
-    if (FAILED(hr)) {
-        cout << "❌ COM 초기화 실패: 0x" << hex << hr << endl;
-        return 1;
-    }
-    cout << "✅ COM 초기화 완료" << endl;
+    // 완료 이벤트 (대기용)
+    HANDLE m_hEvent;
 
-    // ===== 2단계: 디바이스 열거자 생성 =====
-    IMMDeviceEnumerator* enumerator = nullptr;
-    hr = CoCreateInstance(
-        __uuidof(MMDeviceEnumerator),
-        nullptr,
-        CLSCTX_ALL,
-        __uuidof(IMMDeviceEnumerator),
-        (void**)&enumerator
-    );
+    // 활성화 결과 저장
+    HRESULT m_hrActivateResult;
 
-    if (FAILED(hr)) {
-        cout << "❌ 디바이스 열거자 생성 실패: 0x" << hex << hr << endl;
-        CoUninitialize();
-        return 1;
-    }
-    cout << "✅ 디바이스 열거자 생성 완료" << endl;
+    // IAudioClient 객체 (IUnknown으로 받음)
+    IUnknown* m_pUnknown;
 
-    // ===== 3단계: 기본 재생 디바이스 가져오기 =====
-    IMMDevice* device = nullptr;
-    hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
-
-    if (FAILED(hr)) {
-        cout << "❌ 오디오 디바이스 가져오기 실패: 0x" << hex << hr << endl;
-        enumerator->Release();
-        CoUninitialize();
-        return 1;
-    }
-    cout << "✅ 기본 오디오 디바이스 획득" << endl;
-
-    // ===== 4단계: 오디오 클라이언트 활성화 =====
-    IAudioClient* audioClient = nullptr;
-    hr = device->Activate(
-        __uuidof(IAudioClient),
-        CLSCTX_ALL,
-        nullptr,
-        (void**)&audioClient
-    );
-
-    if (FAILED(hr)) {
-        cout << "❌ 오디오 클라이언트 활성화 실패: 0x" << hex << hr << endl;
-        device->Release();
-        enumerator->Release();
-        CoUninitialize();
-        return 1;
-    }
-    cout << "✅ 오디오 클라이언트 활성화 완료" << endl;
-
-    // ===== 5단계: 오디오 형식 가져오기 =====
-    WAVEFORMATEX* waveFormat = nullptr;
-    hr = audioClient->GetMixFormat(&waveFormat);
-
-    if (FAILED(hr)) {
-        cout << "❌ 오디오 형식 가져오기 실패: 0x" << hex << hr << endl;
-        audioClient->Release();
-        device->Release();
-        enumerator->Release();
-        CoUninitialize();
-        return 1;
+public:
+    // 생성자: 멤버 변수 초기화
+    ActivateAudioInterfaceCompletionHandler() :
+        m_refCount(1),                      // 참조 카운트 1로 시작
+        m_hEvent(CreateEvent(NULL, FALSE, FALSE, NULL)),  // 이벤트 생성
+        m_hrActivateResult(E_FAIL),         // 기본값: 실패
+        m_pUnknown(nullptr)                 // NULL로 초기화
+    {
+        printf("[핸들러] 생성됨 (참조 카운트: %d, 이벤트: %p)\n",
+            m_refCount, m_hEvent);
     }
 
-    cout << "✅ 오디오 형식 정보:" << endl;
-    cout << "   - 샘플링 레이트: " << waveFormat->nSamplesPerSec << " Hz" << endl;
-    cout << "   - 채널 수: " << waveFormat->nChannels << endl;
-    cout << "   - 비트 깊이: " << waveFormat->wBitsPerSample << " bits" << endl;
+    // 소멸자: 리소스 정리
+    virtual ~ActivateAudioInterfaceCompletionHandler() {
+        printf("[핸들러] 소멸 시작 (참조 카운트: %d)\n", m_refCount);
 
-    // ===== 6단계: 오디오 클라이언트 초기화 (루프백 모드) =====
-    hr = audioClient->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,           // 공유 모드
-        AUDCLNT_STREAMFLAGS_LOOPBACK,       // 루프백 (스피커 출력 캡처)
-        10000000,                           // 버퍼 지속 시간 (1초)
-        0,                                  // 주기 (공유 모드에서는 0)
-        waveFormat,                         // 오디오 형식
-        nullptr                             // 세션 GUID
-    );
+        // 이벤트 핸들 정리
+        if (m_hEvent) {
+            CloseHandle(m_hEvent);
+            m_hEvent = NULL;
+        }
 
-    if (FAILED(hr)) {
-        cout << "❌ 오디오 클라이언트 초기화 실패: 0x" << hex << hr << endl;
-        CoTaskMemFree(waveFormat);
-        audioClient->Release();
-        device->Release();
-        enumerator->Release();
-        CoUninitialize();
-        return 1;
+        // IAudioClient 정리
+        if (m_pUnknown) {
+            m_pUnknown->Release();
+            m_pUnknown = NULL;
+        }
+
+        printf("[핸들러] 소멸 완료\n");
     }
-    cout << "✅ 오디오 클라이언트 초기화 완료 (루프백 모드)" << endl;
 
-    // ===== 7단계: 캡처 클라이언트 가져오기 =====
-    IAudioCaptureClient* captureClient = nullptr;
-    hr = audioClient->GetService(
-        __uuidof(IAudioCaptureClient),
-        (void**)&captureClient
-    );
+    // ===== IUnknown 메서드 (필수!) =====
 
-    if (FAILED(hr)) {
-        cout << "❌ 캡처 클라이언트 가져오기 실패: 0x" << hex << hr << endl;
-        CoTaskMemFree(waveFormat);
-        audioClient->Release();
-        device->Release();
-        enumerator->Release();
-        CoUninitialize();
-        return 1;
+    // 1️. QueryInterface: "이 인터페이스 지원하나요?"
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppvObject) {
+        printf("[핸들러] QueryInterface 호출됨\n");
+
+        // NULL 체크
+        if (ppvObject == nullptr) {
+            return E_POINTER;
+        }
+
+        // 지원하는 인터페이스 확인
+        if (riid == __uuidof(IUnknown) ||
+            riid == __uuidof(IActivateAudioInterfaceCompletionHandler)) {
+
+            // 지원함! 자기 자신 반환
+            *ppvObject = static_cast<IActivateAudioInterfaceCompletionHandler*>(this);
+            AddRef();  // 참조 카운트 증가
+            return S_OK;
+        }
+
+        // 지원 안 함
+        *ppvObject = nullptr;
+        return E_NOINTERFACE;
     }
-    cout << "✅ 캡처 클라이언트 획득 완료" << endl << endl;
 
-    // ===== 8단계: 캡처 시작! =====
-    hr = audioClient->Start();
-    if (FAILED(hr)) {
-        cout << "❌ 캡처 시작 실패: 0x" << hex << hr << endl;
-        captureClient->Release();
-        CoTaskMemFree(waveFormat);
-        audioClient->Release();
-        device->Release();
-        enumerator->Release();
-        CoUninitialize();
-        return 1;
+    // 2️. AddRef: 참조 카운트 증가
+    STDMETHODIMP_(ULONG) AddRef() {
+        LONG count = InterlockedIncrement(&m_refCount);
+        printf("[핸들러] AddRef: %d\n", count);
+        return count;
     }
-    cout << "🎤 오디오 캡처 시작! (5초간 캡처합니다...)" << endl << endl;
 
-    // ===== 9단계: 5초간 오디오 데이터 캡처 =====
-    DWORD startTime = GetTickCount();
-    int packetCount = 0;
-    UINT64 totalFrames = 0;
+    // 3️. Release: 참조 카운트 감소 (0이면 삭제!)
+    STDMETHODIMP_(ULONG) Release() {
+        LONG count = InterlockedDecrement(&m_refCount);
+        printf("[핸들러] Release: %d\n", count);
 
-    while (GetTickCount() - startTime < 5000) {  // 5초
-        Sleep(10);  // 10ms 대기
+        if (count == 0) {
+            printf("[핸들러] 참조 카운트 0 → 삭제!\n");
+            delete this;  // 자기 자신 삭제
+            return 0;
+        }
 
-        // 사용 가능한 데이터 확인
-        UINT32 packetLength = 0;
-        hr = captureClient->GetNextPacketSize(&packetLength);
+        return count;
+    }
 
+    // ===== IActivateAudioInterfaceCompletionHandler 메서드 =====
+
+    // 4️. ActivateCompleted: 비동기 작업 완료 콜백 (핵심!)
+    STDMETHODIMP ActivateCompleted(IActivateAudioInterfaceAsyncOperation* operation) {
+        printf("[핸들러] ActivateCompleted 호출됨! 🎉\n");
+
+        // 1️. 활성화 결과 획득
+        HRESULT hrActivateResult;
+        IUnknown* pUnknown = nullptr;
+
+        HRESULT hr = operation->GetActivateResult(&hrActivateResult, &pUnknown);
         if (FAILED(hr)) {
-            break;
+            printf("[핸들러] ❌ GetActivateResult 실패: 0x%X\n", hr);
+            m_hrActivateResult = hr;
+            SetEvent(m_hEvent);  // 실패해도 이벤트 신호
+            return hr;
         }
 
-        while (packetLength > 0) {
-            BYTE* pData = nullptr;
-            UINT32 numFramesAvailable = 0;
-            DWORD flags = 0;
-
-            // 버퍼에서 데이터 가져오기
-            hr = captureClient->GetBuffer(
-                &pData,
-                &numFramesAvailable,
-                &flags,
-                nullptr,
-                nullptr
-            );
-
-            if (SUCCEEDED(hr)) {
-                packetCount++;
-                totalFrames += numFramesAvailable;
-
-                // 데이터 처리 (여기서는 첫 10개 샘플만 출력)
-                if (packetCount == 1 && numFramesAvailable > 0) {
-                    cout << "📊 첫 번째 패킷 데이터:" << endl;
-                    cout << "   프레임 수: " << numFramesAvailable << endl;
-                    cout << "   플래그: " << flags << endl;
-
-                    if (pData != nullptr && !(flags & AUDCLNT_BUFFERFLAGS_SILENT)) {
-                        cout << "   첫 10바이트: ";
-                        for (int i = 0; i < min(10, (int)(numFramesAvailable * waveFormat->nBlockAlign)); i++) {
-                            printf("%02X ", pData[i]);
-                        }
-                        cout << endl;
-                    }
-                    cout << endl;
-                }
-
-                // 버퍼 해제
-                captureClient->ReleaseBuffer(numFramesAvailable);
-            }
-
-            // 다음 패킷 확인
-            hr = captureClient->GetNextPacketSize(&packetLength);
-            if (FAILED(hr)) {
-                break;
-            }
+        // 2️. 활성화 자체는 성공했는가?
+        if (FAILED(hrActivateResult)) {
+            printf("[핸들러] ❌ 오디오 활성화 실패: 0x%X\n", hrActivateResult);
+            m_hrActivateResult = hrActivateResult;
+            SetEvent(m_hEvent);
+            return hrActivateResult;
         }
+
+        // 3️. 성공! IAudioClient 저장
+        m_hrActivateResult = hrActivateResult;
+        m_pUnknown = pUnknown;  // 소유권 이전 (나중에 Release)
+
+        printf("[핸들러] ✅ 활성화 성공! IAudioClient 획득\n");
+
+        // 4️. 완료 신호 (대기 중인 메인 스레드 깨우기)
+        SetEvent(m_hEvent);
+
+        return S_OK;
     }
 
-    // ===== 10단계: 캡처 중지 =====
-    audioClient->Stop();
-    cout << "✅ 캡처 완료!" << endl;
-    cout << "   총 패킷 수: " << packetCount << endl;
-    cout << "   총 프레임 수: " << totalFrames << endl;
-    cout << "   캡처 시간: 약 5초" << endl << endl;
+    // ===== 헬퍼 메서드 =====
 
-    // ===== 11단계: 정리 (역순!) =====
-    cout << "🧹 리소스 정리 중..." << endl;
-    captureClient->Release();
-    CoTaskMemFree(waveFormat);
-    audioClient->Release();
-    device->Release();
-    enumerator->Release();
-    CoUninitialize();
-    cout << "✅ 정리 완료!" << endl << endl;
+    // 이벤트 핸들 반환 (WaitForSingleObject용)
+    HANDLE GetEvent() const {
+        return m_hEvent;
+    }
 
-    cout << "계속하려면 Enter 키를 누르세요..." << endl;
-    cin.get();
+    // 활성화 결과 반환 (main에서 호출)
+    HRESULT GetActivateResult(HRESULT* phr, IUnknown** ppUnknown) {
+        if (phr == nullptr || ppUnknown == nullptr) {
+            return E_POINTER;
+        }
+
+        *phr = m_hrActivateResult;
+        *ppUnknown = m_pUnknown;
+
+        // IUnknown 복사 시 AddRef 필요!
+        if (m_pUnknown) {
+            m_pUnknown->AddRef();
+        }
+
+        return S_OK;
+    }
+};
+
+// ========================================
+// Phase 4.2 종료
+// ========================================
+
+int main() {
+    // 1. COM 초기화
+    HRESULT hr = CoInitialize(NULL);
+    if (FAILED(hr)) {
+        printf("COM 초기화 실패: 0x%X\n", hr);
+        return 1;
+    }
+
+    // 2. 디바이스 열거자 생성
+    IMMDeviceEnumerator* enumerator = NULL;
+    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL,
+        CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void**)&enumerator);
+
+    if (FAILED(hr)) {
+        printf("디바이스 열거자 생성 실패: 0x%X\n", hr);
+        CoUninitialize();
+        return 1;
+    }
+
+    // 3. 기본 오디오 디바이스 가져오기
+    IMMDevice* device = NULL;
+    hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+    if (FAILED(hr)) {
+        printf("기본 오디오 디바이스 가져오기 실패: 0x%X\n", hr);
+        enumerator->Release();
+        CoUninitialize();
+        return 1;
+    }
+
+    printf("✅ 오디오 디바이스 획득 성공!\n");  // ✅ 한 번만!
+
+    // ========================================
+    // Phase 4.1: 디바이스 ID 문자열 가져오기
+    // ========================================
+    printf("\n=== Phase 4.1: 디바이스 ID 획득 ===\n");
+
+    LPWSTR deviceIdString = NULL;
+    hr = device->GetId(&deviceIdString);
+
+    if (FAILED(hr)) {
+        printf("❌ 디바이스 ID 가져오기 실패: 0x%X\n", hr);
+        device->Release();
+        enumerator->Release();
+        CoUninitialize();
+        return 1;
+    }
+
+    wprintf(L"디바이스 ID: %s\n", deviceIdString);
+
+    size_t idLength = wcslen(deviceIdString);
+    printf("ID 길이: %zu 문자\n", idLength);
+
+    printf("✅ Phase 4.1 완료!\n\n");
+
+    // ========================================
+    // 정리 (역순으로 한 번만!)
+    // ========================================
+    CoTaskMemFree(deviceIdString);  // deviceIdString 해제
+    device->Release();              // device 해제
+    enumerator->Release();          // enumerator 해제
+    CoUninitialize();               // COM 해제
+
+    // ✅ 여기서 대기!
+    printf("\nEnter 키를 눌러 종료...\n");
+    getchar();  // ← 사용자가 Enter 누를 때까지 대기
+
     return 0;
 }
