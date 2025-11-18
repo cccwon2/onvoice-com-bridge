@@ -2,81 +2,104 @@
 
 #include "pch.h"
 #include "OnVoiceCapture.h"
+#include <stdio.h>  // ⭐ printf 사용을 위해 추가
+
+// ========================================
+// 소멸자: AudioCaptureEngine 삭제 (⭐ 새로 추가)
+// ========================================
+COnVoiceCapture::~COnVoiceCapture()
+{
+    printf("[COnVoiceCapture] 소멸자 시작\n");
+
+    // 엔진 삭제
+    if (m_pEngine) {
+        delete m_pEngine;
+        m_pEngine = nullptr;
+        printf("[COnVoiceCapture] AudioCaptureEngine 삭제\n");
+    }
+
+    printf("[COnVoiceCapture] ✅ 소멸 완료\n");
+}
 
 // ========================================
 // IOnVoiceCapture 인터페이스 구현
 // ========================================
 
-// 캡처 시작
+// 캡처 시작 (⭐ 수정됨)
 STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
 {
-    // 1. 이미 실행 중이면 에러
-    if (m_bIsCapturing) {
-        return E_FAIL;  // "이미 캡처 중입니다"
+    printf("[COnVoiceCapture] StartCapture 호출 (PID: %ld)\n", processId);
+
+    // ⭐ 엔진이 없으면 지금 생성 (지연 생성)
+    if (!m_pEngine) {
+        printf("[COnVoiceCapture] AudioCaptureEngine 생성 중...\n");
+        m_pEngine = new AudioCaptureEngine();
+
+        if (!m_pEngine) {
+            printf("[COnVoiceCapture] ❌ 엔진 생성 실패!\n");
+            return E_OUTOFMEMORY;
+        }
+
+        printf("[COnVoiceCapture] ✅ AudioCaptureEngine 생성 성공\n");
     }
 
-    // 2. PID 저장
+    // 2. 이미 실행 중이면 에러
+    if (m_bIsCapturing || m_pEngine->IsCapturing()) {
+        printf("[COnVoiceCapture] ⚠️ 이미 캡처 중입니다\n");
+        return E_FAIL;
+    }
+
+    // 3. PID 저장
     m_targetPid = processId;
 
-    // 3. 캡처 시작 (나중에 Phase 9에서 실제 캡처 로직 추가)
-    // TODO: Phase 9에서 WASAPI 캡처 코드 추가
-    m_bIsCapturing = TRUE;
+    // 4. 엔진 시작 (this를 콜백으로 전달) (⭐ 핵심!)
+    HRESULT hr = m_pEngine->Start((DWORD)processId, this);
 
-    // ========================================
-    // ★ Phase 8-4: 테스트용 더미 오디오 이벤트 한 번 쏘기
-    //    - 나중에 WASAPI 캡처 루프에서 실제 오디오로 교체 예정
-    // ========================================
-    {
-        const LONG dummyLength = 320; // 예시: 320바이트 (짧은 청크)
-
-        SAFEARRAYBOUND bound;
-        bound.lLbound = 0;
-        bound.cElements = dummyLength;
-
-        SAFEARRAY* psa = SafeArrayCreate(VT_UI1, 1, &bound);
-        if (psa != nullptr)
-        {
-            BYTE* pData = nullptr;
-            HRESULT hrAccess = SafeArrayAccessData(psa, (void**)&pData);
-            if (SUCCEEDED(hrAccess) && pData != nullptr)
-            {
-                // 일단 전부 0으로 채움 (무음)
-                ZeroMemory(pData, dummyLength * sizeof(BYTE));
-                SafeArrayUnaccessData(psa);
-
-                // 이벤트 발사
-                HRESULT hrEvent = Fire_OnAudioData(psa);
-                if (FAILED(hrEvent))
-                {
-                    // 디버그 용: 이벤트 실패 시 로그만 남김
-                    OutputDebugStringW(L"[OnVoiceCapture] Fire_OnAudioData failed in test block.\n");
-                }
-            }
-
-            SafeArrayDestroy(psa);
-        }
+    if (SUCCEEDED(hr)) {
+        m_bIsCapturing = TRUE;
+        printf("[COnVoiceCapture] ✅ 캡처 시작 성공\n");
+    }
+    else {
+        printf("[COnVoiceCapture] ❌ 캡처 시작 실패 (HR: 0x%X)\n", hr);
     }
 
-    return S_OK;  // 성공
+    return hr;
 }
 
-// 캡처 중지
+// 캡처 중지 (⭐ 수정됨)
 STDMETHODIMP COnVoiceCapture::StopCapture()
 {
-    // 1. 실행 중이 아니면 무시
-    if (!m_bIsCapturing) {
-        return S_OK;  // 이미 중지됨
+    printf("[COnVoiceCapture] StopCapture 호출\n");
+
+    // 1. 엔진이 없으면 무시
+    if (!m_pEngine) {
+        printf("[COnVoiceCapture] 엔진이 없습니다 (정상)\n");
+        m_bIsCapturing = FALSE;
+        return S_OK;
     }
 
-    // 2. 캡처 중지 (나중에 Phase 9에서 실제 중지 로직 추가)
-    // TODO: Phase 9에서 정리 코드 추가
-    m_bIsCapturing = FALSE;
-    m_targetPid = 0;
+    // 2. 실행 중이 아니면 무시
+    if (!m_bIsCapturing) {
+        printf("[COnVoiceCapture] 이미 중지 상태입니다\n");
+        return S_OK;
+    }
 
-    return S_OK;
+    // 3. 엔진 중지 (⭐ 추가)
+    HRESULT hr = m_pEngine->Stop();
+
+    if (SUCCEEDED(hr)) {
+        m_bIsCapturing = FALSE;
+        m_targetPid = 0;
+        printf("[COnVoiceCapture] ✅ 캡처 중지 성공\n");
+    }
+    else {
+        printf("[COnVoiceCapture] ❌ 캡처 중지 실패 (HR: 0x%X)\n", hr);
+    }
+
+    return hr;
 }
 
-// 상태 확인
+// 상태 확인 (⭐ 수정됨)
 STDMETHODIMP COnVoiceCapture::GetCaptureState(LONG* pState)
 {
     // 1. NULL 포인터 체크 (중요!)
@@ -84,13 +107,61 @@ STDMETHODIMP COnVoiceCapture::GetCaptureState(LONG* pState)
         return E_POINTER;  // 잘못된 포인터
     }
 
-    // 2. 상태 반환 (0=중지, 1=실행 중)
-    *pState = m_bIsCapturing ? 1 : 0;
+    // 2. 엔진 상태 반환 (⭐ 수정)
+    if (m_pEngine) {
+        *pState = (LONG)m_pEngine->GetState();
+    }
+    else {
+        *pState = 0; // STATE_STOPPED
+    }
 
+    printf("[COnVoiceCapture] GetCaptureState = %ld\n", *pState);
     return S_OK;
 }
 
-// 16kHz PCM 오디오 데이터를 구독자에게 브로드캐스트
+// ========================================
+// IAudioDataCallback 구현 (⭐ 새로 추가)
+// - 엔진에서 오디오 데이터를 받으면 호출됨
+// ========================================
+void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
+{
+    printf("[COnVoiceCapture] OnAudioData 호출 (크기: %u 바이트)\n", dataSize);
+
+    // SAFEARRAY로 변환
+    SAFEARRAY* pSA = SafeArrayCreateVector(VT_UI1, 0, dataSize);
+    if (!pSA) {
+        printf("[COnVoiceCapture] ❌ SAFEARRAY 생성 실패!\n");
+        return;
+    }
+
+    // 데이터 복사
+    void* pArrayData = nullptr;
+    HRESULT hr = SafeArrayAccessData(pSA, &pArrayData);
+    if (SUCCEEDED(hr)) {
+        memcpy(pArrayData, pData, dataSize);
+        SafeArrayUnaccessData(pSA);
+
+        // COM 이벤트 발생! (⭐ VBScript로 전달)
+        HRESULT hrEvent = Fire_OnAudioData(pSA);
+
+        if (SUCCEEDED(hrEvent)) {
+            printf("[COnVoiceCapture] ✅ OnAudioData 이벤트 발생 성공\n");
+        }
+        else {
+            printf("[COnVoiceCapture] ❌ OnAudioData 이벤트 발생 실패 (HR: 0x%X)\n", hrEvent);
+        }
+    }
+    else {
+        printf("[COnVoiceCapture] ❌ SAFEARRAY 접근 실패!\n");
+    }
+
+    // SAFEARRAY 정리
+    SafeArrayDestroy(pSA);
+}
+
+// ========================================
+// 이벤트 헬퍼: 16kHz PCM 오디오 데이터를 구독자에게 브로드캐스트
+// ========================================
 HRESULT COnVoiceCapture::Fire_OnAudioData(SAFEARRAY* psaAudio)
 {
     if (psaAudio == nullptr)
