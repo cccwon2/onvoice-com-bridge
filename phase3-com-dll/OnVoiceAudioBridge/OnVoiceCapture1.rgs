@@ -1,0 +1,16 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {111ecd77-014c-431d-859b-337a0f31c3b7} = s 'OnVoiceCapture class'
+		{
+			ForceRemove Programmable
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+			TypeLib = s '{03ece82b-7d84-476f-99e0-1f74529d22e2}'
+			Version = s '1.0'
+		}
+	}
+}
