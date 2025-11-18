@@ -96,6 +96,14 @@ EXTERN_C const IID IID_IOnVoiceCapture;
     IOnVoiceCapture : public IDispatch
     {
     public:
+        virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE StartCapture( 
+            /* [in] */ LONG processId) = 0;
+        
+        virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE StopCapture( void) = 0;
+        
+        virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE GetCaptureState( 
+            /* [retval][out] */ LONG *pState) = 0;
+        
     };
     
     
@@ -161,6 +169,20 @@ EXTERN_C const IID IID_IOnVoiceCapture;
             /* [annotation][out] */ 
             _Out_opt_  UINT *puArgErr);
         
+        DECLSPEC_XFGVIRT(IOnVoiceCapture, StartCapture)
+        /* [helpstring][id] */ HRESULT ( STDMETHODCALLTYPE *StartCapture )( 
+            IOnVoiceCapture * This,
+            /* [in] */ LONG processId);
+        
+        DECLSPEC_XFGVIRT(IOnVoiceCapture, StopCapture)
+        /* [helpstring][id] */ HRESULT ( STDMETHODCALLTYPE *StopCapture )( 
+            IOnVoiceCapture * This);
+        
+        DECLSPEC_XFGVIRT(IOnVoiceCapture, GetCaptureState)
+        /* [helpstring][id] */ HRESULT ( STDMETHODCALLTYPE *GetCaptureState )( 
+            IOnVoiceCapture * This,
+            /* [retval][out] */ LONG *pState);
+        
         END_INTERFACE
     } IOnVoiceCaptureVtbl;
 
@@ -196,6 +218,15 @@ EXTERN_C const IID IID_IOnVoiceCapture;
 #define IOnVoiceCapture_Invoke(This,dispIdMember,riid,lcid,wFlags,pDispParams,pVarResult,pExcepInfo,puArgErr)	\
     ( (This)->lpVtbl -> Invoke(This,dispIdMember,riid,lcid,wFlags,pDispParams,pVarResult,pExcepInfo,puArgErr) ) 
 
+
+#define IOnVoiceCapture_StartCapture(This,processId)	\
+    ( (This)->lpVtbl -> StartCapture(This,processId) ) 
+
+#define IOnVoiceCapture_StopCapture(This)	\
+    ( (This)->lpVtbl -> StopCapture(This) ) 
+
+#define IOnVoiceCapture_GetCaptureState(This,pState)	\
+    ( (This)->lpVtbl -> GetCaptureState(This,pState) ) 
 
 #endif /* COBJMACROS */
 

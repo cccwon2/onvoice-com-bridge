@@ -26,6 +26,9 @@ class ATL_NO_VTABLE COnVoiceCapture :
 public:
 	COnVoiceCapture()
 	{
+		// 멤버 변수 초기화
+		m_bIsCapturing = FALSE;  // 초기 상태: 캡처 중지
+		m_targetPid = 0;         // PID 없음
 	}
 
 DECLARE_REGISTRY_RESOURCEID(106)
@@ -50,9 +53,24 @@ END_COM_MAP()
 	}
 
 public:
+	// ========================================
+	// IOnVoiceCapture 인터페이스 구현
+	// ========================================
 
+	// 캡처 시작
+	STDMETHOD(StartCapture)(LONG processId);
 
+	// 캡처 중지
+	STDMETHOD(StopCapture)();
 
+	// 상태 확인
+	STDMETHOD(GetCaptureState)(LONG* pState);
+private:
+	// ========================================
+	// 멤버 변수
+	// ========================================
+	BOOL m_bIsCapturing;   // 캡처 중인지 여부 (TRUE/FALSE)
+	LONG m_targetPid;      // 대상 프로세스 ID
 };
 
 OBJECT_ENTRY_AUTO(__uuidof(OnVoiceCapture), COnVoiceCapture)
