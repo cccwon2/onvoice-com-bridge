@@ -1,6 +1,5 @@
 ﻿// OnVoiceAudioBridge.idl: OnVoiceAudioBridge의 IDL 소스
 //
-
 // 이 파일은 MIDL 도구에 의해 처리되어
 // 형식 라이브러리(OnVoiceAudioBridge.tlb) 및 마샬링 코드를 생성합니다.
 
@@ -8,46 +7,68 @@ import "oaidl.idl";
 import "ocidl.idl";
 
 [
-	object,
-	uuid(43a468da-7889-46c9-99de-38cb93e4e649),
-	dual,
-	nonextensible,
-	pointer_default(unique)
+    object,
+    uuid(43a468da-7889-46c9-99de-38cb93e4e649),
+    dual,
+    nonextensible,
+    pointer_default(unique)
 ]
 interface IOnVoiceCapture : IDispatch
 {
-	// ========================================
-	// 메서드 1: 캡처 시작 (PID 지정)
-	// ========================================
-	[id(1), helpstring("특정 프로세스의 오디오 캡처 시작")]
-	HRESULT StartCapture([in] LONG processId);
+    // ========================================
+    // 메서드 1: 캡처 시작 (PID 지정)
+    // ========================================
+    [id(1), helpstring("특정 프로세스의 오디오 캡처 시작")]
+    HRESULT StartCapture([in] LONG processId);
 
-	// ========================================
-	// 메서드 2: 캡처 중지
-	// ========================================
-	[id(2), helpstring("오디오 캡처 중지")]
-	HRESULT StopCapture();
+    // ========================================
+    // 메서드 2: 캡처 중지
+    // ========================================
+    [id(2), helpstring("오디오 캡처 중지")]
+        HRESULT StopCapture();
 
-	// ========================================
-	// 메서드 3: 상태 확인 (0=중지, 1=실행 중)
-	// ========================================
-	[id(3), helpstring("현재 캡처 상태 반환")]
-	HRESULT GetCaptureState([out, retval] LONG* pState);
+    // ========================================
+    // 메서드 3: 상태 확인 (0=중지, 1=실행 중)
+    // ========================================
+    [id(3), helpstring("현재 캡처 상태 반환")]
+        HRESULT GetCaptureState([out, retval] LONG* pState);
 };
+
 [
-	uuid(419618dd-d242-4428-8f62-5651cb46a9be),
-	version(1.0),
+    uuid(419618dd-d242-4428-8f62-5651cb46a9be),
+    version(1.0),
 ]
 library OnVoiceAudioBridgeLib
 {
-	importlib("stdole2.tlb");
-	[
-		uuid(fe3c62ec-02f2-4c63-8266-d538a86fd7f9)
-	]
-	coclass OnVoiceCapture
-	{
-		[default] interface IOnVoiceCapture;
-	};
+    importlib("stdole2.tlb");
+
+    // ========================================
+    // ★ 이벤트 dispinterface 정의
+    //    - 16kHz mono 16-bit PCM 오디오 청크 전달
+    // ========================================
+    [
+        uuid(52b4a16b-9f83-4a3e-9240-4dd6676540ea), // 임시 GUID, 원하면 guidgen.exe로 새로 생성 가능
+        hidden
+    ]
+    dispinterface _IOnVoiceCaptureEvents
+    {
+    properties:
+    methods:
+        [id(1), helpstring("16kHz mono PCM audio chunk")]
+        void OnAudioData([in] SAFEARRAY(BYTE) pcmData);
+    };
+
+    // ========================================
+    // coclass: 기본 인터페이스 + 이벤트 소스 연결
+    // ========================================
+    [
+        uuid(fe3c62ec-02f2-4c63-8266-d538a86fd7f9)
+    ]
+        coclass OnVoiceCapture
+    {
+        [default] interface IOnVoiceCapture;
+        [default, source] dispinterface _IOnVoiceCaptureEvents; // ★ 추가
+    };
 };
 
 import "shobjidl.idl";
