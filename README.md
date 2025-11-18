@@ -232,9 +232,18 @@ onvoice-com-bridge/
 │   ├── build-errors.md             # 에러 해결
 │   └── phase-progress.md           # 진행 상황 ✅
 │
-├── phase1-console/                 # 🧪 PoC 및 학습
-│   ├── reference/                  # ProcessLoopbackCapture 원본 ✅
-│   └── poc/                        # 콘솔 PoC (Week 0 완료) ✅
+├── phase1-console/                 # 🧪 PoC 및 학습 (Week 0 완료) ✅
+│   ├── reference/                  # ProcessLoopbackCapture 원본 참조
+│   │   ├── ProcessLoopbackCapture.cpp/h  # 원본 구현
+│   │   ├── examples/simple_recorder/     # 예제 코드
+│   │   └── README.md                     # 참조 문서
+│   └── AudioCaptureTest/          # 콘솔 PoC 프로젝트
+│       ├── AudioCaptureTest.cpp   # 메인 프로그램
+│       ├── ProcessLoopbackCapture.cpp/h  # PID 기반 캡처 구현
+│       ├── AudioCaptureTest.vcxproj      # 프로젝트 파일
+│       ├── captured_audio.wav     # 캡처된 오디오 (출력)
+│       └── x64/Debug/
+│           └── AudioCaptureTest.exe
 │
 ├── phase2-learning/                # 📖 Day 1-2 학습 프로젝트 ✅
 │   ├── HelloCOM/                   # ATL DLL 템플릿
