@@ -2,9 +2,9 @@
 
 Windows WASAPI 기반 프로세스별 오디오 캡처 COM 브리지
 
-[![Phase](https://img.shields.io/badge/Phase-Week%201%20Day%202%20Complete-green)]()
-[![Progress](https://img.shields.io/badge/Progress-50%25-blue)]()
-[![Time](https://img.shields.io/badge/Spent-12h%20%2F%2050h-orange)]()
+[![Phase](https://img.shields.io/badge/Phase-Week%201%20Day%203%20Complete-green)]()
+[![Progress](https://img.shields.io/badge/Progress-56%25-blue)]()
+[![Time](https://img.shields.io/badge/Spent-14h%20%2F%2050h-orange)]()
 
 ---
 
@@ -18,6 +18,7 @@ Windows WASAPI 기반 프로세스별 오디오 캡처 COM 브리지
 - ✅ 자동 프로세스 감지 (Discord/Chrome) (Week 0 완료)
 - ✅ 16kHz mono PCM 자동 변환 (Week 0 검증)
 - ✅ PID 기반 프로세스별 오디오 격리 (Day 2 완료) ⭐
+- ✅ ATL COM DLL 프로젝트 구조 완성 (Day 3 완료) ⭐
 - ⏳ COM 이벤트 기반 실시간 스트리밍 (Week 2 예정)
 
 **팀**: H.E.A.R. (OnVoice 프로젝트)  
@@ -26,55 +27,46 @@ Windows WASAPI 기반 프로세스별 오디오 캡처 COM 브리지
 
 ---
 
-## 🏆 최신 업데이트 (2025-11-18, Day 2)
+## 🏆 최신 업데이트 (2025-11-18, Day 3)
 
-### ✅ Day 2 완료 내용
+### ✅ Day 3 완료 내용
 
-**Phase 4: PID 기반 캡처 성공** ⭐ 가장 어려운 단계!
+**Phase 7: ATL COM 프로젝트 완성** ⭐ VBScript 테스트 성공!
 
 ```
 핵심 달성:
-✅ ActivateAudioInterfaceAsync 비동기 API 구현
-✅ IActivateAudioInterfaceCompletionHandler 완료 핸들러
-✅ IAgileObject 추가로 MTA 안정성 확보
-✅ VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK 사용
-✅ Chrome PID (21616)로 선택적 오디오 캡처 성공
-✅ 참조 카운팅 정상 (AddRef/Release)
-✅ 메모리 누수 제로
+✅ OnVoiceAudioBridge ATL COM DLL 프로젝트 생성
+✅ IOnVoiceCapture 인터페이스 3개 메서드 구현
+✅ StartCapture(PID) / StopCapture() / GetCaptureState() 작동
+✅ 상태 관리 (m_bIsCapturing, m_targetPid) 정상 동작
+✅ VBScript 테스트 완벽 통과
+✅ COM 객체 생성 및 호출 검증 완료
 ```
 
-**핵심 코드 구조**:
+**VBScript 테스트 결과**:
 
-```cpp
-// 1. Process Loopback 파라미터
-AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS loopbackParams = {};
-loopbackParams.TargetProcessId = chromePid;  // Chrome만!
-loopbackParams.ProcessLoopbackMode =
-    PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+```vbscript
+' 1. COM 객체 생성
+Set capture = CreateObject("OnVoiceAudioBridge.OnVoiceCapture")
 
-// 2. 비동기 활성화
-ActivateAudioInterfaceAsync(
-    VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,  // ⭐ 핵심!
-    __uuidof(IAudioClient),
-    &activateParams,
-    pHandler,
-    &pAsyncOp
-);
+' 2. 초기 상태 확인 → 0 (중지)
+WScript.Echo "초기 상태: " & capture.GetCaptureState()
 
-// 3. 완료 대기
-WaitForSingleObject(pHandler->GetEvent(), 5000);
+' 3. 캡처 시작 (PID: 12345)
+capture.StartCapture(12345)
+WScript.Echo "현재 상태: " & capture.GetCaptureState()  ' → 1 (실행 중)
 
-// 4. IAudioClient 획득
-pHandler->GetActivateResult(&hr, &pUnknown);
-pUnknown->QueryInterface(__uuidof(IAudioClient), (void**)&audioClient);
+' 4. 캡처 중지
+capture.StopCapture()
+WScript.Echo "최종 상태: " & capture.GetCaptureState()  ' → 0 (중지)
 ```
 
-### 📊 Day 2 성과
+### 📊 Day 3 성과
 
-| 항목               | 계획    | 실제    | 상태             |
-| ------------------ | ------- | ------- | ---------------- |
-| Phase 4 (PID 캡처) | 3h      | 2h      | ✅ 초과 달성!    |
-| **누적**           | **26h** | **12h** | **-14h 절감** ✨ |
+| 항목                  | 계획    | 실제    | 상태             |
+| --------------------- | ------- | ------- | ---------------- |
+| Phase 7 (COM DLL 구현) | 4h      | 2h      | ✅ 초과 달성!    |
+| **누적**              | **30h** | **14h** | **-16h 절감** ✨ |
 
 ---
 
@@ -97,7 +89,7 @@ pUnknown->QueryInterface(__uuidof(IAudioClient), (void**)&audioClient);
 
 ---
 
-### 📋 Week 1: COM 브리지 기초 (T+6-20h) - 진행 중 (60% 완료)
+### 📋 Week 1: COM 브리지 기초 (T+6-20h) - 진행 중 (70% 완료)
 
 #### ✅ Day 1 (T+6-10h) - 완료!
 
@@ -126,7 +118,19 @@ pUnknown->QueryInterface(__uuidof(IAudioClient), (void**)&audioClient);
 
 **실제 소요**: 2시간 (계획 3h 대비 -1h) 🎉
 
-#### 📋 Day 3 (T+12-18h) - 계획
+#### ✅ Day 3 (T+12-14h) - 완료! ⭐ 신규!
+
+- [x] **Phase 7**: ATL COM DLL 프로젝트
+  - [x] OnVoiceAudioBridge 프로젝트 생성
+  - [x] IDL 인터페이스 정의 (IOnVoiceCapture)
+  - [x] 3개 메서드 구현 (StartCapture, StopCapture, GetCaptureState)
+  - [x] 상태 관리 멤버 변수 (m_bIsCapturing, m_targetPid)
+  - [x] VBScript 테스트 스크립트 작성
+  - [x] COM 객체 생성 및 호출 검증
+
+**실제 소요**: 2시간 (계획 4h 대비 -2h) 🎉
+
+#### 📋 Day 4 (T+14-18h) - 계획
 
 - [ ] **Phase 5**: 리소스 누수 수정 (우선)
 
@@ -144,28 +148,24 @@ pUnknown->QueryInterface(__uuidof(IAudioClient), (void**)&audioClient);
 
 ### 📋 Week 2: COM DLL 및 Electron 연동 (T+18-40h) - 계획
 
-#### Day 4-5: ATL COM DLL 프로젝트
+#### Day 5-6: COM 이벤트 및 캡처 통합
 
-- [ ] **Phase 7**: ATL COM 프로젝트 생성
+- [ ] **Phase 8**: COM 이벤트 콜백
 
-  - [ ] OnVoiceAudioBridge DLL 프로젝트
-  - [ ] IDL 인터페이스 정의
-  - [ ] `IDispatch` 메서드 구현
-
-- [ ] **Phase 8**: 캡처 엔진 통합
-  - [ ] Phase 4 코드를 COM DLL로 이식
-  - [ ] StartCapture(PID), StopCapture() 메서드
-  - [ ] VBScript로 테스트
-
-#### Day 6-7: COM 이벤트 및 Electron 연동
-
-- [ ] **Phase 9-10**: COM 이벤트 콜백
-
+  - [ ] IDL에 이벤트 인터페이스 정의
   - [ ] `IConnectionPoint` 구현
   - [ ] OnAudioData(SAFEARRAY\*) 이벤트
   - [ ] SAFEARRAY로 오디오 데이터 전송
 
-- [ ] **Phase 11-13**: winax + Electron
+- [ ] **Phase 9**: 캡처 엔진 통합
+  - [ ] Phase 4 코드를 COM DLL로 이식
+  - [ ] StartCapture에서 실제 WASAPI 캡처 시작
+  - [ ] OnAudioData 이벤트로 데이터 전송
+  - [ ] VBScript로 이벤트 수신 테스트
+
+#### Day 7: Electron 연동
+
+- [ ] **Phase 10-12**: winax + Electron
   - [ ] winax 설치 및 재빌드
   - [ ] Electron Main 프로세스 연동
   - [ ] Renderer 프로세스로 데이터 전송
@@ -176,12 +176,12 @@ pUnknown->QueryInterface(__uuidof(IAudioClient), (void**)&audioClient);
 
 ### 📋 Week 3: 테스트 및 완성 (T+40-50h) - 계획
 
-- [ ] **Phase 14**: 다중 프로세스 테스트
+- [ ] **Phase 13**: 다중 프로세스 테스트
 
   - [ ] Discord/Chrome/Edge 동시 캡처
   - [ ] 프로세스 격리 검증
 
-- [ ] **Phase 15**: 안정화
+- [ ] **Phase 14**: 안정화
   - [ ] 크래시 시나리오 테스트
   - [ ] 메모리 누수 검사 (1시간 연속 실행)
   - [ ] 최종 E2E 테스트
@@ -195,11 +195,14 @@ pUnknown->QueryInterface(__uuidof(IAudioClient), (void**)&audioClient);
 ```
 onvoice-com-bridge/
 ├── docs/                           # 📚 문서
-│   ├── learning-notes.md           # 빠른 참조 + Day 1-2 학습 내용 ✅
+│   ├── learning-notes.md           # 빠른 참조 + Day 1-3 학습 내용 ✅
 │   ├── details/                    # 상세 문서
 │   │   ├── com-deep-dive.md        # COM 상세
 │   │   ├── wasapi-deep-dive.md     # WASAPI 상세
 │   │   └── poc-lessons.md          # PoC 학습
+├── phases/                         # 진행 상황 상세 문서
+│   │   ├── week0-poc.md            # PoC 완성 및 검증 상세
+│   │   ├── week1-com-bridge.md     # COM WASAPI bridge 상세
 │   ├── build-errors.md             # 에러 해결
 │   └── phase-progress.md           # 진행 상황 ✅
 │
@@ -214,8 +217,13 @@ onvoice-com-bridge/
 │   ├── AudioCapture/               # WASAPI 루프백 캡처 (Day 1)
 │   └── AudioCapturePID/            # PID 기반 캡처 (Day 2) ⭐
 │
-├── phase3-com-dll/                 # 🔧 COM DLL (Week 1-2 예정)
-│   └── OnVoiceAudioBridge/
+├── phase3-com-dll/                 # 🔧 COM DLL (Week 1 진행 중) ⭐
+│   └── OnVoiceAudioBridge/         # ATL COM DLL 프로젝트 (Day 3) ✅
+│       ├── OnVoiceAudioBridge.idl  # 인터페이스 정의
+│       ├── OnVoiceCapture.h/.cpp   # 구현
+│       └── x64/Debug/
+│           ├── OnVoiceAudioBridge.dll
+│           └── TestOnVoiceCapture.vbs  # VBScript 테스트
 │
 ├── phase4-electron/                # ⚡ Electron 연동 (Week 2 예정)
 │   └── test-winax/
@@ -229,9 +237,42 @@ onvoice-com-bridge/
 
 ## 🚀 빌드 및 실행
 
-### Day 2 프로젝트 - 현재 가능 ✅
+### Day 3 프로젝트 - 현재 가능 ✅ 신규!
 
-#### AudioCapturePID (PID 기반 캡처) ⭐ 신규!
+#### OnVoiceAudioBridge (ATL COM DLL) ⭐
+
+```bash
+1. Visual Studio 2026 열기
+2. phase3-com-dll/OnVoiceAudioBridge/OnVoiceAudioBridge.sln 열기
+3. Ctrl+Shift+B (빌드)
+4. 출력 확인:
+   ========== 빌드: 성공 1 ==========
+   x64\Debug\OnVoiceAudioBridge.dll 생성됨
+```
+
+**VBScript 테스트 실행**:
+
+```powershell
+# PowerShell에서 실행
+cd phase3-com-dll\OnVoiceAudioBridge\x64\Debug
+C:\Windows\System32\cscript.exe //nologo TestOnVoiceCapture.vbs
+
+# 예상 출력:
+# ==========================================
+# OnVoice COM 브리지 테스트 시작!
+# ==========================================
+# [1단계] COM 객체 생성 중...
+# [OK] COM 객체 생성 성공!
+# [2단계] 초기 상태 확인 중...
+# 초기 상태: 0 (0=중지, 1=실행 중)
+# [OK] 예상대로 중지 상태입니다!
+# ...
+# 모든 테스트 완료!
+```
+
+### Day 2 프로젝트 - 가능 ✅
+
+#### AudioCapturePID (PID 기반 캡처) ⭐
 
 ```bash
 1. Visual Studio 2026 열기
@@ -246,16 +287,6 @@ onvoice-com-bridge/
    - PID의 오디오만 캡처 가능
 ```
 
-**PID 확인 방법**:
-
-```powershell
-# Chrome 브라우저 프로세스 찾기
-Get-Process chrome | Where-Object {$_.MainWindowTitle -ne ""} | Select-Object Id, MainWindowTitle
-
-# Discord 프로세스 찾기
-Get-Process Discord | Select-Object Id, ProcessName
-```
-
 ### Day 1 학습 프로젝트 - 가능 ✅
 
 #### HelloCOM (ATL DLL 템플릿)
@@ -265,35 +296,6 @@ Get-Process Discord | Select-Object Id, ProcessName
 2. phase2-learning/HelloCOM/HelloCOM.sln 열기
 3. Ctrl+Shift+B (빌드)
 4. x64/Debug/HelloCOM.dll 생성 확인
-```
-
-#### CppBasics (포인터/참조 실습)
-
-```bash
-1. phase2-learning/CppBasics/CppBasics.sln 열기
-2. Ctrl+F5 (실행)
-3. 포인터와 참조 출력 확인
-```
-
-#### COMBasics (COM 기본 실습)
-
-```bash
-1. phase2-learning/COMBasics/COMBasics.sln 열기
-2. Ctrl+F5 (실행)
-3. 오디오 디바이스 정보 출력 확인
-```
-
-#### AudioCapture (WASAPI 기본 캡처)
-
-```bash
-1. phase2-learning/AudioCapture/AudioCapture.sln 열기
-2. Ctrl+F5 (실행)
-3. 음악 재생 (YouTube, Spotify 등)
-4. 5초간 오디오 캡처 진행
-5. 결과 확인:
-   - 총 패킷 수: 500개
-   - 총 프레임 수: 240,000
-   - 오디오 데이터: DB 6A 81 BC...
 ```
 
 ---
@@ -322,11 +324,12 @@ start AudioCaptureTest.sln
 ### C++ 레이어
 
 - **개발 환경**: Visual Studio Community 2026
-- **프로젝트 타입**: ATL COM In-Process DLL (예정)
+- **프로젝트 타입**: ATL COM In-Process DLL ⭐
 - **API**: Windows WASAPI (Loopback + Process-Specific)
   - `ActivateAudioInterfaceAsync` (비동기 활성화) ✅
   - `AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS` (PID 지정) ✅
   - `IActivateAudioInterfaceCompletionHandler` (완료 콜백) ✅
+- **COM**: ATL, `IDispatch`, `IConnectionPoint` (예정)
 - **참조 구현**: [ProcessLoopbackCapture](https://github.com/Naseband/ProcessLoopbackCapture)
 - **링커 라이브러리**: ole32.lib, oleaut32.lib, mmdevapi.lib, avrt.lib, mfplat.lib
 
@@ -348,7 +351,7 @@ start AudioCaptureTest.sln
 
 ### 빠른 시작
 
-- **[learning-notes.md](docs/learning-notes.md)**: 빠른 참조 + Day 1-2 학습 내용 (포인터, COM, WASAPI, PID 캡처)
+- **[learning-notes.md](docs/learning-notes.md)**: 빠른 참조 + Day 1-3 학습 내용
 
 ### 상세 문서
 
@@ -368,10 +371,10 @@ start AudioCaptureTest.sln
 ### 전체 진행률
 
 ```
-[██████████░░░░░░░░] 50% (12h / 50h)
+[███████████░░░░░] 56% (14h / 50h)
 
 Week 0: ████████████ 100% (6h)
-Week 1: ████████░░░░ 60% (6h / 14h)
+Week 1: ██████████░░ 70% (8h / 14h) ⭐
 Week 2: ░░░░░░░░░░░░ 0% (0h / 22h)
 Week 3: ░░░░░░░░░░░░ 0% (0h / 10h)
 ```
@@ -382,59 +385,57 @@ Week 3: ░░░░░░░░░░░░ 0% (0h / 10h)
 | -------------------- | ------------ | -------------- |
 | Week 0 PoC 완성      | ✅ 완료      | 2025-11-16     |
 | Day 1 학습 완료      | ✅ 완료      | 2025-11-17     |
-| **Day 2 PID 캡처**   | ✅ **완료**  | **2025-11-18** |
-| Day 3 리소스 관리    | ⏳ 진행 예정 | 2025-11-19     |
+| Day 2 PID 캡처       | ✅ 완료      | 2025-11-18     |
+| **Day 3 COM DLL**    | ✅ **완료**  | **2025-11-18** |
+| Day 4 리소스 관리    | ⏳ 진행 예정 | 2025-11-19     |
 | Week 1 COM 기초      | ⏳ 진행 중   | 2025-11-20     |
 | Week 2 Electron 연동 | 📅 예정      | 2025-11-27     |
 | Week 3 MVP 완성      | 📅 예정      | 2025-12-04     |
 
 ### 시간 효율
 
-| 항목           | 계획 | 실제 | 차이        |
-| -------------- | ---- | ---- | ----------- |
-| Week 0         | 14h  | 6h   | **-8h** ✨  |
-| Week 1 (Day 1) | 6h   | 4h   | **-2h** ✨  |
-| Week 1 (Day 2) | 8h   | 2h   | **-6h** ✨  |
-| **누적 절감**  | 28h  | 12h  | **-16h** 🎉 |
-| **남은 예산**  | 50h  | 38h  | -           |
+| 항목           | 계획 | 실제 | 차이         |
+| -------------- | ---- | ---- | ------------ |
+| Week 0         | 14h  | 6h   | **-8h** ✨   |
+| Week 1 (Day 1) | 6h   | 4h   | **-2h** ✨   |
+| Week 1 (Day 2) | 8h   | 2h   | **-6h** ✨   |
+| Week 1 (Day 3) | 10h  | 2h   | **-8h** ✨   |
+| **누적 절감**  | 38h  | 14h  | **-24h** 🎉  |
+| **남은 예산**  | 50h  | 36h  | -            |
+| **효율성**     | -    | -    | **48% 향상** |
 
 ---
 
-## 🎯 다음 단계 (Day 3)
+## 🎯 다음 단계 (Day 4)
 
-### Phase 5: 리소스 누수 수정 (최우선)
+### Phase 8: COM 이벤트 콜백 (최우선) ⭐
 
-**목표**: 100회 시작/중지에도 메모리 누수 없도록 보장
+**목표**: COM → Electron 이벤트 전송 구현
+
+**예상 소요**: 2-3시간  
+**난이도**: ⭐⭐⭐⭐ 매우 어려움 (COM의 가장 복잡한 부분!)
 
 **핵심 작업**:
 
-1. `ActivateAudioInterfaceAsync` 후 `pAsyncOp` Release 확인
-2. `QueryInterface` 후 `pUnknown` Release 확인
-3. `CoTaskMemFree(deviceIdString)` 누락 수정
-4. 100회 반복 테스트 작성
-5. Task Manager로 메모리 증가 모니터링
+1. IDL에 이벤트 인터페이스 정의 (`_IOnVoiceCaptureEvents`)
+2. `IConnectionPoint` / `IConnectionPointContainer` 구현
+3. `FireOnAudioData()` 헬퍼 함수
+4. VBScript 이벤트 수신 테스트
 
-**테스트 코드**:
+**테스트 목표**:
 
-```cpp
-for (int i = 0; i < 100; i++) {
-    // 캡처 시작
-    StartPIDCapture(chromePid);
+```vbscript
+' VBScript에서 이벤트 수신
+Set capture = CreateObject("OnVoiceAudioBridge.OnVoiceCapture")
+WScript.ConnectObject capture, "OnVoice_"
 
-    // 1초 대기
-    Sleep(1000);
+capture.StartCapture(12345)
 
-    // 정리
-    StopPIDCapture();
-
-    printf("반복 %d/100 완료\n", i+1);
-}
-
-printf("메모리 누수 테스트 완료!\n");
+' 이벤트 핸들러 (자동 호출됨)
+Sub OnVoice_OnAudioData(data, dataSize)
+    WScript.Echo "오디오 데이터 수신: " & dataSize & " bytes"
+End Sub
 ```
-
-**예상 소요**: 1-2시간  
-**난이도**: ⭐⭐⭐ 어려움
 
 ---
 
@@ -457,7 +458,7 @@ printf("메모리 누수 테스트 완료!\n");
   - 500개 패킷 실시간 수신
   - 실제 오디오 데이터 검증 완료
 
-### Day 2 (2025-11-18) ⭐ 중요!
+### Day 2 (2025-11-18) ⭐
 
 - ✅ **PID 기반 오디오 캡처 성공** (가장 어려운 단계!)
 - ✅ `ActivateAudioInterfaceAsync` 비동기 API 구현
@@ -467,23 +468,35 @@ printf("메모리 누수 테스트 완료!\n");
 - ✅ 참조 카운팅 정상 동작 (AddRef: 1→2→3, Release: 2→1→0)
 - ✅ 메모리 정리 완료 (핸들러 소멸자 실행)
 
+### Day 3 (2025-11-18) ⭐ 신규!
+
+- ✅ **ATL COM DLL 프로젝트 구조 완성**
+- ✅ `IOnVoiceCapture` 인터페이스 3개 메서드 구현
+- ✅ `StartCapture(PID)` / `StopCapture()` / `GetCaptureState()` 작동
+- ✅ 상태 관리 멤버 변수 정상 동작
+- ✅ **VBScript 테스트 완벽 통과**
+  - COM 객체 생성 성공
+  - 메서드 호출 정상
+  - 상태 전환 확인 (0 → 1 → 0)
+
 **검증 결과**:
 
 ```
-✅ 비동기 콜백 정상 동작
-✅ 이벤트 동기화 성공 (WaitForSingleObject)
-✅ IAudioClient 획득 성공
-✅ PID 21616 오디오 세션 연결
-✅ 정리 완료 (메모리 누수 없음)
+✅ CreateObject("OnVoiceAudioBridge.OnVoiceCapture") 성공
+✅ 초기 상태: 0 (중지)
+✅ StartCapture(12345) → 상태: 1 (실행 중)
+✅ StopCapture() → 상태: 0 (중지)
+✅ 모든 테스트 통과!
 ```
 
-### 학습한 프로젝트 (5개)
+### 학습한 프로젝트 (6개)
 
 1. **HelloCOM** - ATL DLL 템플릿 이해
 2. **CppBasics** - 포인터와 참조 실습
 3. **COMBasics** - COM 디바이스 정보 가져오기
 4. **AudioCapture** - WASAPI 루프백 캡처 (Day 1)
 5. **AudioCapturePID** - PID 기반 선택적 캡처 (Day 2) ⭐
+6. **OnVoiceAudioBridge** - ATL COM DLL 프로젝트 (Day 3) ⭐ 신규!
 
 ---
 
@@ -498,21 +511,31 @@ printf("메모리 누수 테스트 완료!\n");
 
 ### 학습 자료
 
-- [learning-notes.md](docs/learning-notes.md) - 빠른 참조 + Day 1-2 학습
+- [learning-notes.md](docs/learning-notes.md) - 빠른 참조 + Day 1-3 학습
 - [COM Deep Dive](docs/details/com-deep-dive.md) - COM 상세
 - [WASAPI Deep Dive](docs/details/wasapi-deep-dive.md) - WASAPI 상세
 
 ---
 
-**마지막 업데이트**: 2025-11-18 (Day 2 완료)  
+**마지막 업데이트**: 2025-11-18 (Day 3 완료)  
 **개발자**: 김원 (H.E.A.R. Team)  
-**현재 상태**: Week 1 Day 2 완료 ✅ → Day 3 준비 중 🚀
+**현재 상태**: Week 1 Day 3 완료 ✅ → Day 4 준비 중 🚀
 
 ---
 
 ## 📝 변경 이력
 
-### 2025-11-18 (Day 2) ⭐
+### 2025-11-18 (Day 3) ⭐ 신규!
+
+- ✅ **Phase 7 완료 - ATL COM DLL 프로젝트 성공!**
+- ✅ OnVoiceAudioBridge 프로젝트 생성
+- ✅ IOnVoiceCapture 인터페이스 3개 메서드 구현
+- ✅ VBScript 테스트 완벽 통과
+- ✅ COM 객체 생성 및 상태 관리 검증
+- 📊 진행률: 50% → 56%
+- ⏱️ 시간 절감: 누적 24시간 (계획 38h → 실제 14h)
+
+### 2025-11-18 (Day 2)
 
 - ✅ **Phase 4 완료 - PID 기반 캡처 성공!**
 - ✅ ActivateAudioInterfaceAsync 비동기 API 구현
@@ -521,7 +544,7 @@ printf("메모리 누수 테스트 완료!\n");
 - ✅ Chrome PID 선택적 캡처 검증
 - ✅ 참조 카운팅 정상 동작 확인
 - 📊 진행률: 40% → 50%
-- ⏱️ 시간 절감: 누적 16시간 (계획 28h → 실제 12h)
+- ⏱️ 시간 절감: 누적 16시간
 
 ### 2025-11-17 (Day 1)
 

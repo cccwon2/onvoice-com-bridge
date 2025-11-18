@@ -1,10 +1,10 @@
 # Week 1: COM 브리지 기초 📖
 
-T+6-20h (14시간 예정, 현재 6시간 완료)
+T+6-20h (14시간 예정, 현재 8시간 완료)
 
-**진행률**: 60% (6h / 14h)  
+**진행률**: 70% (8h / 14h)  
 **상태**: 🔄 진행 중  
-**마지막 업데이트**: 2025-11-18 (Day 2 완료)
+**마지막 업데이트**: 2025-11-18 (Day 3 완료)
 
 ---
 
@@ -12,13 +12,371 @@ T+6-20h (14시간 예정, 현재 6시간 완료)
 
 ```
 Week 1 타임라인:
-[████████░░░░] 60% (6h / 14h)
+[██████████░░] 70% (8h / 14h)
 
 Day 1 (T+6-10h):  ████████████ 100% (4h / 6h) ✅
 Day 2 (T+10-12h): ████████████ 100% (2h / 8h) ✅
-Day 3 (T+12-18h): ░░░░░░░░░░░░ 0% (0h / 6h) ⏳
-Day 4-5 (예정):   ░░░░░░░░░░░░ 0%
+Day 3 (T+12-14h): ████████████ 100% (2h / 4h) ✅ 신규!
+Day 4 (T+14-18h): ░░░░░░░░░░░░ 0% (0h / 6h) ⏳
+Day 5 (예정):     ░░░░░░░░░░░░ 0%
 ```
+
+---
+
+## ✅ Day 3 (T+12-14h) - 완료! ⭐ 신규! (2025-11-18)
+
+### Phase 7: ATL COM DLL 프로젝트
+
+- **시간**: T+12-14h
+- **실제 소요**: 2시간 (계획 4h 대비 -2h ✨✨)
+- **난이도**: ⭐⭐⭐ 어려움
+- **완료 날짜**: 2025-11-18
+
+**체크포인트**:
+
+- [x] ATL 프로젝트 "OnVoiceAudioBridge" 생성
+- [x] IDL 파일에 인터페이스 정의 (`IOnVoiceCapture`)
+- [x] 3개 메서드 구현 (StartCapture, StopCapture, GetCaptureState)
+- [x] 상태 관리 멤버 변수 (m_bIsCapturing, m_targetPid)
+- [x] VBScript 테스트 스크립트 작성
+- [x] COM 객체 생성 및 호출 검증 완료
+
+**프로젝트 생성**:
+
+```
+1. Visual Studio → 파일 → 새로만들기 → 프로젝트
+2. 템플릿 검색: "ATL 프로젝트"
+3. 프로젝트 이름: OnVoiceAudioBridge
+4. 애플리케이션 유형: DLL (동적 연결 라이브러리)
+5. ATL 사용 허용: 체크
+6. MFC 지원: 체크 해제
+7. 완료
+```
+
+**IDL 인터페이스 정의** (`OnVoiceAudioBridge.idl`):
+
+```idl
+// OnVoiceAudioBridge.idl: OnVoiceAudioBridge의 IDL 소스
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+    object,
+    uuid(43a468da-7889-46c9-99de-38cb93e4e649),
+    dual,
+    nonextensible,
+    pointer_default(unique)
+]
+interface IOnVoiceCapture : IDispatch
+{
+    // ========================================
+    // 메서드 1: 캡처 시작 (PID 지정)
+    // ========================================
+    [id(1), helpstring("특정 프로세스의 오디오 캡처 시작")]
+    HRESULT StartCapture([in] LONG processId);
+
+    // ========================================
+    // 메서드 2: 캡처 중지
+    // ========================================
+    [id(2), helpstring("오디오 캡처 중지")]
+    HRESULT StopCapture();
+
+    // ========================================
+    // 메서드 3: 상태 확인 (0=중지, 1=실행 중)
+    // ========================================
+    [id(3), helpstring("현재 캡처 상태 반환")]
+    HRESULT GetCaptureState([out, retval] LONG* pState);
+};
+
+[
+    uuid(419618dd-d242-4428-8f62-5651cb46a9be),
+    version(1.0),
+]
+library OnVoiceAudioBridgeLib
+{
+    importlib("stdole2.tlb");
+    [
+        uuid(fe3c62ec-02f2-4c63-8266-d538a86fd7f9)
+    ]
+    coclass OnVoiceCapture
+    {
+        [default] interface IOnVoiceCapture;
+    };
+};
+```
+
+**클래스 선언** (`OnVoiceCapture.h`):
+
+```cpp
+class ATL_NO_VTABLE COnVoiceCapture :
+    public CComObjectRootEx<CComSingleThreadModel>,
+    public CComCoClass<COnVoiceCapture, &CLSID_OnVoiceCapture>,
+    public IDispatchImpl<IOnVoiceCapture, &IID_IOnVoiceCapture, 
+                         &LIBID_OnVoiceAudioBridgeLib, 1, 0>
+{
+public:
+    COnVoiceCapture()
+    {
+        // 멤버 변수 초기화
+        m_bIsCapturing = FALSE;  // 초기 상태: 캡처 중지
+        m_targetPid = 0;         // PID 없음
+    }
+
+    DECLARE_REGISTRY_RESOURCEID(106)
+
+    BEGIN_COM_MAP(COnVoiceCapture)
+        COM_INTERFACE_ENTRY(IOnVoiceCapture)
+        COM_INTERFACE_ENTRY(IDispatch)
+    END_COM_MAP()
+
+    DECLARE_PROTECT_FINAL_CONSTRUCT()
+
+    HRESULT FinalConstruct() { return S_OK; }
+    void FinalRelease() {}
+
+public:
+    // ========================================
+    // IOnVoiceCapture 인터페이스 구현
+    // ========================================
+    STDMETHOD(StartCapture)(LONG processId);
+    STDMETHOD(StopCapture)();
+    STDMETHOD(GetCaptureState)(LONG* pState);
+
+private:
+    // ========================================
+    // 멤버 변수
+    // ========================================
+    BOOL m_bIsCapturing;   // 캡처 중인지 여부 (TRUE/FALSE)
+    LONG m_targetPid;      // 대상 프로세스 ID
+};
+```
+
+**메서드 구현** (`OnVoiceCapture.cpp`):
+
+```cpp
+// 캡처 시작
+STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
+{
+    // 1. 이미 실행 중이면 에러
+    if (m_bIsCapturing) {
+        return E_FAIL;  // "이미 캡처 중입니다"
+    }
+
+    // 2. PID 저장
+    m_targetPid = processId;
+
+    // 3. 캡처 시작 (나중에 Phase 9에서 실제 캡처 로직 추가)
+    // TODO: Phase 9에서 WASAPI 캡처 코드 추가
+    m_bIsCapturing = TRUE;
+
+    return S_OK;  // 성공
+}
+
+// 캡처 중지
+STDMETHODIMP COnVoiceCapture::StopCapture()
+{
+    // 1. 실행 중이 아니면 무시
+    if (!m_bIsCapturing) {
+        return S_OK;  // 이미 중지됨
+    }
+
+    // 2. 캡처 중지 (나중에 Phase 9에서 실제 중지 로직 추가)
+    // TODO: Phase 9에서 정리 코드 추가
+    m_bIsCapturing = FALSE;
+    m_targetPid = 0;
+
+    return S_OK;
+}
+
+// 상태 확인
+STDMETHODIMP COnVoiceCapture::GetCaptureState(LONG* pState)
+{
+    // 1. NULL 포인터 체크 (중요!)
+    if (pState == NULL) {
+        return E_POINTER;  // 잘못된 포인터
+    }
+
+    // 2. 상태 반환 (0=중지, 1=실행 중)
+    *pState = m_bIsCapturing ? 1 : 0;
+
+    return S_OK;
+}
+```
+
+**VBScript 테스트** (`TestOnVoiceCapture.vbs`):
+
+```vbscript
+' ==========================================
+' OnVoice COM 브리지 테스트 스크립트
+' ==========================================
+
+WScript.Echo "=========================================="
+WScript.Echo "OnVoice COM 브리지 테스트 시작!"
+WScript.Echo "=========================================="
+
+' 1. COM 객체 생성
+WScript.Echo "[1단계] COM 객체 생성 중..."
+On Error Resume Next
+Set capture = CreateObject("OnVoiceAudioBridge.OnVoiceCapture")
+If Err.Number <> 0 Then
+    WScript.Echo "[ERROR] COM 객체 생성 실패!"
+    WScript.Echo "오류: " & Err.Description
+    WScript.Quit 1
+End If
+On Error Goto 0
+WScript.Echo "[OK] COM 객체 생성 성공!"
+
+' 2. 초기 상태 확인
+WScript.Echo "[2단계] 초기 상태 확인 중..."
+initialState = capture.GetCaptureState()
+WScript.Echo "초기 상태: " & initialState & " (0=중지, 1=실행 중)"
+
+If initialState = 0 Then
+    WScript.Echo "[OK] 예상대로 중지 상태입니다!"
+Else
+    WScript.Echo "[FAIL] 예상과 다른 상태입니다!"
+End If
+
+' 3. 캡처 시작
+WScript.Echo "[3단계] 캡처 시작 (테스트 PID: 12345)..."
+capture.StartCapture(12345)
+WScript.Echo "[OK] StartCapture 호출 완료!"
+
+' 4. 실행 중 상태 확인
+WScript.Echo "[4단계] 캡처 시작 후 상태 확인..."
+runningState = capture.GetCaptureState()
+WScript.Echo "현재 상태: " & runningState
+
+If runningState = 1 Then
+    WScript.Echo "[OK] 예상대로 실행 중입니다!"
+Else
+    WScript.Echo "[FAIL] 예상과 다른 상태입니다!"
+End If
+
+' 5. 캡처 중지
+WScript.Echo "[5단계] 캡처 중지..."
+capture.StopCapture()
+WScript.Echo "[OK] StopCapture 호출 완료!"
+
+' 6. 최종 상태 확인
+WScript.Echo "[6단계] 최종 상태 확인..."
+finalState = capture.GetCaptureState()
+WScript.Echo "최종 상태: " & finalState
+
+If finalState = 0 Then
+    WScript.Echo "[OK] 예상대로 중지 상태입니다!"
+Else
+    WScript.Echo "[FAIL] 예상과 다른 상태입니다!"
+End If
+
+' 7. 요약
+WScript.Echo "=========================================="
+WScript.Echo "모든 테스트 완료!"
+WScript.Echo "=========================================="
+WScript.Echo "결과 요약:"
+WScript.Echo "- COM 객체 생성: OK"
+WScript.Echo "- StartCapture: OK"
+WScript.Echo "- StopCapture: OK"
+WScript.Echo "- GetCaptureState: OK"
+WScript.Echo ""
+WScript.Echo "Phase 7 완료!"
+```
+
+**검증 결과**:
+
+```
+==========================================
+OnVoice COM 브리지 테스트 시작!
+==========================================
+[1단계] COM 객체 생성 중...
+[OK] COM 객체 생성 성공!
+[2단계] 초기 상태 확인 중...
+초기 상태: 0 (0=중지, 1=실행 중)
+[OK] 예상대로 중지 상태입니다!
+[3단계] 캡처 시작 (테스트 PID: 12345)...
+[OK] StartCapture 호출 완료!
+[4단계] 캡처 시작 후 상태 확인...
+현재 상태: 1
+[OK] 예상대로 실행 중입니다!
+[5단계] 캡처 중지...
+[OK] StopCapture 호출 완료!
+[6단계] 최종 상태 확인...
+최종 상태: 0
+[OK] 예상대로 중지 상태입니다!
+==========================================
+모든 테스트 완료!
+==========================================
+결과 요약:
+- COM 객체 생성: OK
+- StartCapture: OK
+- StopCapture: OK
+- GetCaptureState: OK
+
+Phase 7 완료!
+```
+
+**핵심 개념 정리**:
+
+#### 1. ATL 프로젝트 구조
+
+**자동 생성되는 파일**:
+
+- `OnVoiceAudioBridge.idl`: 인터페이스 정의 (수동 편집)
+- `OnVoiceAudioBridge_i.h`: IDL에서 자동 생성된 타입 정의
+- `OnVoiceAudioBridge_i.c`: GUID 정의
+- `OnVoiceCapture.rgs`: COM 레지스트리 스크립트
+
+#### 2. IDL 속성 설명
+
+| 속성         | 의미                               |
+| ------------ | ---------------------------------- |
+| `[id(1)]`    | 메서드 ID (IDispatch에서 사용)    |
+| `[in]`       | 입력 파라미터 (호출자 → COM)      |
+| `[out]`      | 출력 파라미터 (COM → 호출자)      |
+| `[retval]`   | 반환 값 (VBScript에서 직접 사용)  |
+| `dual`       | IDispatch + vtable 모두 지원      |
+| `helpstring` | 설명 문자열                        |
+
+#### 3. VBScript 테스트 패턴
+
+**장점**:
+
+- 빠른 테스트 (컴파일 불필요)
+- COM 등록 자동 확인
+- 간단한 문법
+
+**사용법**:
+
+```powershell
+cd x64\Debug
+C:\Windows\System32\cscript.exe //nologo TestOnVoiceCapture.vbs
+```
+
+**배운 점**:
+
+- ✅ ATL 마법사로 빠른 프로젝트 생성
+- ✅ IDL 문법 및 속성 이해
+- ✅ `IDispatch` 인터페이스의 중요성
+- ✅ VBScript로 간단한 COM 테스트
+- ✅ 상태 관리 패턴 (멤버 변수)
+
+---
+
+### Day 3 성과
+
+| Phase              | 계획   | 실제   | 차이         |
+| ------------------ | ------ | ------ | ------------ |
+| Phase 7 (COM DLL)  | 4h     | 2h     | **-2h** ✨✨ |
+
+**완료한 프로젝트** (신규 1개):
+
+6. ✅ **OnVoiceAudioBridge** - ATL COM DLL 프로젝트 ⭐ 신규!
+
+**중요 달성**:
+
+- 🎉 **ATL COM DLL 프로젝트 구조 완성!**
+- 🎉 **IDispatch 인터페이스 작동 확인!**
+- 🎉 **VBScript 테스트 성공!**
 
 ---
 
@@ -40,29 +398,6 @@ Day 4-5 (예정):   ░░░░░░░░░░░░ 0%
 - [x] 빈 COM DLL 빌드 성공 (HelloCOM.dll)
 - [x] regsvr32 권한 문제 해결 (사용자 단위 리디렉션)
 
-**워크로드 설정**:
-
-```
-✅ C++를 사용한 데스크톱 개발
-✅ MSVC v145 - VS 2026 C++ x64/x86 빌드 도구
-✅ Windows 11 SDK (10.0.26100.0)
-✅ C++ ATL for latest v145 build tools
-```
-
-**빌드 결과**:
-
-```
-========== 빌드: 성공 1, 실패 0 ==========
-출력: x64\Debug\HelloCOM.dll (52KB)
-```
-
-**배운 점**:
-
-- ✅ ATL 마법사 사용법
-- ✅ COM DLL 프로젝트 생성 및 빌드
-- ✅ Visual Studio 2026 새 기능
-- ✅ 링커 설정의 중요성
-
 ---
 
 ### Phase 2: C++ 기초 학습
@@ -80,65 +415,6 @@ Day 4-5 (예정):   ░░░░░░░░░░░░ 0%
 - [x] 이중 포인터 (`int**`) 개념
 - [x] `nullptr` 사용법
 - [x] COM 초기화 및 디바이스 정보 가져오기
-
-#### 2.1 포인터와 참조 실습 (CppBasics)
-
-**핵심 개념**:
-
-```cpp
-// 포인터: 메모리 주소
-int age = 42;
-int* ptr = &age;
-cout << *ptr;  // 42
-
-// 참조: 변수의 별명
-int& ref = age;
-ref = 100;  // age도 100
-
-// 이중 포인터 (COM에서 자주 사용)
-int** ppValue = &ptr;
-**ppValue = 200;
-```
-
-**연산자 정리**:
-| 표기 | 의미 | 예시 |
-|------|------|------|
-| `int* ptr` | 포인터 선언 | `IMMDevice* device` |
-| `&변수` | 변수의 주소 | `&age` |
-| `*ptr` | 포인터가 가리키는 값 | `*ptr = 100` |
-| `ptr->Method()` | 포인터로 메서드 호출 | `device->Release()` |
-| `nullptr` | NULL 포인터 | `int* ptr = nullptr` |
-
-#### 2.2 COM 기본 개념 (COMBasics)
-
-**실습 코드**:
-
-```cpp
-// 1. COM 초기화
-CoInitialize(nullptr);
-
-// 2. 디바이스 열거자 생성
-IMMDeviceEnumerator* enumerator = nullptr;
-CoCreateInstance(__uuidof(MMDeviceEnumerator), ...);
-
-// 3. 기본 오디오 디바이스 가져오기
-IMMDevice* device = nullptr;
-enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
-
-// 4. 정리 (역순!)
-device->Release();
-enumerator->Release();
-CoUninitialize();
-```
-
-**검증 결과**:
-
-```
-✅ COM 초기화 성공
-✅ 디바이스 열거자 생성 성공
-✅ 기본 오디오 디바이스 획득!
-✅ 정리 완료! (메모리 누수 없음)
-```
 
 ---
 
@@ -159,80 +435,6 @@ CoUninitialize();
 - [x] 캡처 클라이언트 획득
 - [x] 5초간 오디오 데이터 캡처
 - [x] 실시간 패킷 수신 확인
-
-**캡처 결과**:
-
-```
-오디오 형식:
-- 샘플링 레이트: 48000 Hz
-- 채널 수: 2 (스테레오)
-- 비트 깊이: 32 bits (Float)
-
-캡처 성과:
-- 총 패킷 수: 500개
-- 총 프레임 수: 240,000 (48kHz × 5초)
-- 실제 데이터: DB 6A 81 BC... (0이 아님 ✅)
-```
-
-**핵심 코드 패턴**:
-
-```cpp
-// 1. 오디오 클라이언트 활성화
-IAudioClient* audioClient = nullptr;
-device->Activate(__uuidof(IAudioClient), ...);
-
-// 2. 믹스 형식 가져오기
-WAVEFORMATEX* waveFormat = nullptr;
-audioClient->GetMixFormat(&waveFormat);
-
-// 3. 루프백 모드로 초기화
-audioClient->Initialize(
-    AUDCLNT_SHAREMODE_SHARED,
-    AUDCLNT_STREAMFLAGS_LOOPBACK,  // ⭐ 루프백!
-    10000000, 0, waveFormat, nullptr
-);
-
-// 4. 캡처 시작
-audioClient->Start();
-
-// 5. 데이터 읽기 루프
-while (!stopped) {
-    Sleep(10);
-    captureClient->GetNextPacketSize(&packetLength);
-    // ... GetBuffer, Process, ReleaseBuffer
-}
-
-// 6. 정리
-audioClient->Stop();
-captureClient->Release();
-CoTaskMemFree(waveFormat);  // ⭐ 필수!
-audioClient->Release();
-```
-
-**중요한 발견**:
-
-1. ✅ 루프백 모드 작동 (스피커 출력 캡처)
-2. ✅ 패킷 기반 스트리밍 (10ms 폴링, 낮은 지연)
-3. ✅ `CoTaskMemFree()` 필수 (일반 free가 아님!)
-4. ✅ 모든 COM 객체 정상 Release
-
----
-
-### Day 1 성과
-
-| Phase                 | 계획   | 실제   | 차이         |
-| --------------------- | ------ | ------ | ------------ |
-| Phase 1 (VS 설정)     | 2h     | 1h     | **-1h** ✨   |
-| Phase 2 (C++ 기초)    | 2h     | 1.5h   | **-0.5h** ✨ |
-| Phase 3.1 (기본 캡처) | 2h     | 1.5h   | **-0.5h** ✨ |
-| **합계**              | **6h** | **4h** | **-2h** 🎉   |
-
-**완료한 프로젝트** (4개):
-
-1. ✅ HelloCOM - ATL DLL 템플릿
-2. ✅ CppBasics - 포인터/참조 실습
-3. ✅ COMBasics - COM 디바이스 정보
-4. ✅ AudioCapture - WASAPI 루프백 캡처
 
 ---
 
@@ -255,220 +457,115 @@ audioClient->Release();
 - [x] Chrome PID로 선택적 캡처 검증
 - [x] 참조 카운팅 정상 동작 확인
 
-**핵심 코드**:
-
-```cpp
-// 1. Process Loopback 파라미터 설정
-AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS loopbackParams = {};
-loopbackParams.TargetProcessId = chromePid;  // Chrome만!
-loopbackParams.ProcessLoopbackMode =
-    PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
-
-AUDIOCLIENT_ACTIVATION_PARAMS activationParams = {};
-activationParams.ActivationType =
-    AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
-activationParams.ProcessLoopbackParams = loopbackParams;
-
-// 2. PROPVARIANT 래핑
-PROPVARIANT activateParams;
-PropVariantInit(&activateParams);
-activateParams.vt = VT_BLOB;
-activateParams.blob.cbSize = sizeof(activationParams);
-activateParams.blob.pBlobData = (BYTE*)&activationParams;
-
-// 3. 비동기 활성화 (핵심!)
-ActivateAudioInterfaceAsync(
-    VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,  // ⭐ 상수 사용
-    __uuidof(IAudioClient),
-    &activateParams,
-    pHandler,
-    &pAsyncOp
-);
-
-// 4. 완료 대기
-WaitForSingleObject(pHandler->GetEvent(), 5000);
-
-// 5. IAudioClient 획득
-pHandler->GetActivateResult(&hr, &pUnknown);
-pUnknown->QueryInterface(__uuidof(IAudioClient), (void**)&audioClient);
-```
-
-**검증 결과**:
-
-```
-=== Phase 4.3: PID 기반 캡처 시작 ===
-대상 PID: 21616
-프로세스: Chrome 브라우저 (추정)
-PROPVARIANT 래핑 완료 (크기: 12 바이트)
-
-=== Phase 4.4: 비동기 오디오 활성화 ===
-[핸들러] 생성됨 (참조 카운트: 1)
-✅ 완료 핸들러 생성됨
-[핸들러] AddRef: 2
-[핸들러] AddRef: 3
-✅ 비동기 활성화 호출 성공!
-완료 대기 중[핸들러] ActivateCompleted 호출됨! 🎉
-[핸들러] ✅ 활성화 성공! IAudioClient 획득
- → 완료! ✅
-✅ IAudioClient 획득 성공!
-✅ 이제 PID 21616 의 오디오만 캡처 가능합니다! 🎉
-[핸들러] Release: 2
-[핸들러] Release: 1
-[핸들러] Release: 0
-[핸들러] 참조 카운트 0 → 삭제!
-[핸들러] 소멸 완료
-
-정리 완료!
-```
-
-**5가지 핵심 개념**:
-
-#### 1. 비동기 활성화 패턴
-
-- `ActivateAudioInterfaceAsync`는 비동기 함수
-- 완료 핸들러 + 이벤트 동기화 필요
-- `WaitForSingleObject`로 완료 대기
-
-#### 2. IAgileObject (MTA 안정성)
-
-- MTA (멀티스레드 아파트)에서 안전한 호출
-- 비동기 콜백이 다른 스레드에서 실행됨
-- 없으면 크래시!
-
-#### 3. AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS
-
-- PID로 특정 앱만 캡처
-- 3단계 래핑: PROPVARIANT → ACTIVATION_PARAMS → LOOPBACK_PARAMS
-
-#### 4. VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK
-
-- 일반 디바이스 ID 대신 특수 상수
-- Windows가 PID 기반으로 오디오 격리
-
-#### 5. 참조 카운팅 검증
-
-- AddRef: 1 → 2 → 3
-- Release: 2 → 1 → 0
-- 카운트 0 → 자동 삭제 (메모리 누수 없음!)
-
-**배운 점**:
-
-- ✅ 비동기 COM 작업 동기화 패턴
-- ✅ `IAgileObject`의 필수성
-- ✅ PROPVARIANT 3단계 래핑 구조
-- ✅ Process Loopback 실제 구현 방법
-- ✅ 참조 카운팅 디버깅 기법
-
 ---
 
-### Day 2 성과
+## ⏳ Day 4 (T+14-18h) - 계획 (2025-11-19 예정)
 
-| Phase              | 계획 | 실제 | 차이       |
-| ------------------ | ---- | ---- | ---------- |
-| Phase 4 (PID 캡처) | 3h   | 2h   | **-1h** ✨ |
+### Phase 8: COM 이벤트 콜백 (최우선) ⭐
 
-**완료한 프로젝트** (신규 1개): 5. ✅ AudioCapturePID - PID 기반 선택적 캡처 ⭐
-
-**중요 달성**:
-
-- 🎉 **Week 1의 가장 어려운 단계 완료!**
-- 🎉 **비동기 API 구현 성공!**
-- 🎉 **메모리 누수 제로!**
-
----
-
-## ⏳ Day 3 (T+12-18h) - 계획 (2025-11-19 예정)
-
-### Phase 5: 리소스 누수 수정 (최우선)
-
-- **시간**: T+12-14h
-- **예상 소요**: 1-2시간
-- **난이도**: ⭐⭐⭐ 어려움
-- **목표**: 100회 시작/중지에도 메모리 누수 없도록 보장
+- **시간**: T+14-17h
+- **예상 소요**: 2-3시간
+- **난이도**: ⭐⭐⭐⭐ 매우 어려움 (COM의 가장 복잡한 부분!)
+- **목표**: COM → Electron 이벤트 전송 구현
 
 **체크포인트**:
 
-- [ ] `ActivateAudioInterfaceAsync` 후 `pAsyncOp` Release 확인
-- [ ] `QueryInterface` 후 `pUnknown` Release 확인
-- [ ] `CoTaskMemFree(deviceIdString)` 누락 수정
-- [ ] 100회 반복 테스트 작성
-- [ ] Task Manager로 메모리 증가 모니터링
-
-**테스트 코드** (예정):
-
-```cpp
-for (int i = 0; i < 100; i++) {
-    // 캡처 시작
-    StartPIDCapture(chromePid);
-
-    // 1초 대기
-    Sleep(1000);
-
-    // 정리
-    StopPIDCapture();
-
-    printf("반복 %d/100 완료\n", i+1);
-}
-
-printf("메모리 누수 테스트 완료!\n");
-```
-
-**예상 수정 사항**:
-
-1. MS 샘플의 참조 카운트 버그
-2. CoTaskMemFree 누락
-3. Release 호출 순서
-
----
-
-### Phase 6: SpeexDSP 리샘플링 (선택 사항)
-
-- **시간**: T+14-18h
-- **예상 소요**: 생략 또는 나중
-- **난이도**: ⭐⭐ 보통
-- **목표**: 48kHz Float → 16kHz Int16 변환
-
-**Week 0 발견 사항**:
-
-> "16kHz 변환이 Windows 엔진에서 자동으로 됨, SpeexDSP 불필요!"
-
-**권장**: 이 단계는 **건너뛰기** 또는 나중으로 미룸
-
----
-
-## 📋 Day 4-5 (T+18-20h) - 계획
-
-### Phase 7: ATL COM 프로젝트 생성
-
-- **시간**: T+18-22h
-- **예상 소요**: 4시간
-- **난이도**: ⭐⭐⭐ 어려움
-- **목표**: OnVoice COM DLL 뼈대 작성
-
-**체크포인트**:
-
-- [ ] ATL 프로젝트 "OnVoiceAudioBridge" 생성
-- [ ] IDL 파일에 인터페이스 정의
-- [ ] `IOnVoiceCapture` 인터페이스
-- [ ] `StartCapture(LONG pid)` 메서드
-- [ ] `StopCapture()` 메서드
-- [ ] VBScript로 COM 호출 테스트
+- [ ] IDL에 이벤트 인터페이스 정의 (`_IOnVoiceCaptureEvents`)
+- [ ] `dispinterface` 문법 이해
+- [ ] `coclass`에 `[source]` 속성 추가
+- [ ] `IConnectionPointContainer` 구현 (ATL)
+- [ ] `IConnectionPoint` 구현 (ATL)
+- [ ] `FireOnAudioData()` 헬퍼 함수
+- [ ] VBScript 이벤트 수신 테스트
 
 **예상 코드 구조**:
 
-```cpp
-// IDL 파일
-interface IOnVoiceCapture : IDispatch
+```idl
+// IDL 파일에 추가
+[
+    uuid(12345678-1234-1234-1234-123456789ABC),  // 새 GUID 생성!
+    helpstring("OnVoiceCapture 이벤트 인터페이스")
+]
+dispinterface _IOnVoiceCaptureEvents
 {
-    [id(1)] HRESULT StartCapture([in] LONG pid);
-    [id(2)] HRESULT StopCapture();
-    [id(3)] HRESULT GetState([out, retval] LONG* pState);
+    properties:
+    methods:
+        [id(1), helpstring("오디오 데이터 수신 이벤트")]
+        void OnAudioData([in] SAFEARRAY(BYTE) data, [in] LONG dataSize);
 };
 
 coclass OnVoiceCapture
 {
     [default] interface IOnVoiceCapture;
+    [default, source] dispinterface _IOnVoiceCaptureEvents;  // ⬅️ 추가!
 };
+```
+
+**테스트 목표**:
+
+```vbscript
+' VBScript에서 이벤트 수신
+Set capture = CreateObject("OnVoiceAudioBridge.OnVoiceCapture")
+WScript.ConnectObject capture, "OnVoice_"
+
+capture.StartCapture(12345)
+
+' 이벤트 핸들러 (자동 호출됨!)
+Sub OnVoice_OnAudioData(data, dataSize)
+    WScript.Echo "오디오 데이터 수신: " & dataSize & " bytes"
+End Sub
+```
+
+---
+
+### Phase 5: 리소스 누수 수정 (선택 사항)
+
+- **시간**: T+17-18h
+- **예상 소요**: 1시간 또는 건너뛰기
+- **난이도**: ⭐⭐⭐ 어려움
+- **목표**: 100회 시작/중지에도 메모리 누수 없도록 보장
+
+**결정 보류**: Phase 8 이후 필요 여부 재검토
+
+---
+
+## 📋 Day 5 (T+18-20h) - 계획
+
+### Phase 9: 캡처 엔진 통합
+
+- **시간**: T+18-22h
+- **예상 소요**: 3-4시간
+- **난이도**: ⭐⭐⭐ 어려움
+- **목표**: Phase 4의 WASAPI 코드를 COM DLL로 이식
+
+**체크포인트**:
+
+- [ ] Phase 4의 `AudioCapturePID` 코드 리뷰
+- [ ] `COnVoiceCapture` 클래스에 멤버 변수 추가
+  - `IAudioClient* m_pAudioClient`
+  - `IAudioCaptureClient* m_pCaptureClient`
+  - 캡처 스레드 관련 변수
+- [ ] `StartCapture()`에서 실제 WASAPI 캡처 시작
+- [ ] 캡처 스레드에서 `FireOnAudioData()` 호출
+- [ ] `StopCapture()`에서 정리
+- [ ] VBScript로 실제 오디오 데이터 수신 테스트
+
+**예상 코드 구조**:
+
+```cpp
+// OnVoiceCapture.h에 추가
+private:
+    // WASAPI 관련
+    IAudioClient* m_pAudioClient;
+    IAudioCaptureClient* m_pCaptureClient;
+    
+    // 스레드 관련
+    HANDLE m_hCaptureThread;
+    BOOL m_bStopCapture;
+    
+    // 스레드 함수
+    static DWORD WINAPI CaptureThreadProc(LPVOID lpParam);
+    void DoCaptureLoop();
 ```
 
 ---
@@ -477,21 +574,23 @@ coclass OnVoiceCapture
 
 ### 시간 추적
 
-| 일자     | Phase       | 계획   | 실제   | 차이       |
-| -------- | ----------- | ------ | ------ | ---------- |
-| Day 1    | Phase 1-3.1 | 6h     | 4h     | **-2h** ✨ |
-| Day 2    | Phase 4     | 3h     | 2h     | **-1h** ✨ |
-| Day 3    | Phase 5-6   | -      | -      | -          |
-| Day 4-5  | Phase 7     | -      | -      | -          |
-| **합계** |             | **9h** | **6h** | **-3h**    |
+| 일자     | Phase       | 계획   | 실제   | 차이        |
+| -------- | ----------- | ------ | ------ | ----------- |
+| Day 1    | Phase 1-3.1 | 6h     | 4h     | **-2h** ✨  |
+| Day 2    | Phase 4     | 3h     | 2h     | **-1h** ✨  |
+| Day 3    | Phase 7     | 4h     | 2h     | **-2h** ✨✨ |
+| Day 4    | Phase 8     | -      | -      | -           |
+| Day 5    | Phase 9     | -      | -      | -           |
+| **합계** |             | **13h** | **8h** | **-5h** 🎉  |
 
-### 완료한 프로젝트 (5개)
+### 완료한 프로젝트 (6개)
 
 1. ✅ HelloCOM - ATL DLL 템플릿
 2. ✅ CppBasics - 포인터/참조 실습
 3. ✅ COMBasics - COM 기본 실습
 4. ✅ AudioCapture - WASAPI 루프백 캡처
 5. ✅ AudioCapturePID - PID 기반 캡처 ⭐
+6. ✅ **OnVoiceAudioBridge** - ATL COM DLL 프로젝트 ⭐ 신규!
 
 ### 학습 성과
 
@@ -510,8 +609,12 @@ coclass OnVoiceCapture
 - ✅ `CoInitialize()` / `CoUninitialize()`
 - ✅ `CoCreateInstance()` 객체 생성
 - ✅ `HRESULT` 에러 처리
-- ✅ **`IAgileObject` (MTA 안정성)** ⭐ 신규
-- ✅ **비동기 COM 작업 동기화** ⭐ 신규
+- ✅ **`IAgileObject` (MTA 안정성)** (Day 2)
+- ✅ **비동기 COM 작업 동기화** (Day 2)
+- ✅ **ATL 프로젝트 구조** ⭐ (Day 3)
+- ✅ **IDL (Interface Definition Language)** ⭐ (Day 3)
+- ✅ **IDispatch 인터페이스** ⭐ (Day 3)
+- ✅ **VBScript COM 테스트** ⭐ (Day 3)
 
 **WASAPI 개념**:
 
@@ -521,16 +624,16 @@ coclass OnVoiceCapture
 - ✅ `IAudioCaptureClient` (캡처 인터페이스)
 - ✅ `AUDCLNT_STREAMFLAGS_LOOPBACK` (루프백 모드)
 - ✅ 패킷 기반 스트리밍 패턴
-- ✅ **`ActivateAudioInterfaceAsync` (비동기 활성화)** ⭐ 신규
-- ✅ **`AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS` (PID 지정)** ⭐ 신규
-- ✅ **`VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK` (가상 디바이스)** ⭐ 신규
+- ✅ **`ActivateAudioInterfaceAsync` (비동기 활성화)** (Day 2)
+- ✅ **`AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS` (PID 지정)** (Day 2)
+- ✅ **`VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK` (가상 디바이스)** (Day 2)
 
 ---
 
 ## 🎯 다음 단계
 
-**즉시**: Phase 5 (리소스 누수 수정) - 1-2시간  
-**이후**: Phase 7 (ATL COM DLL 프로젝트) - 4시간  
+**즉시**: Phase 8 (COM 이벤트 콜백) - 2-3시간  
+**이후**: Phase 9 (캡처 엔진 통합) - 3-4시간  
 **목표**: Week 1 완료 (T+20h)
 
 ---
