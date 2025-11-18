@@ -12,13 +12,11 @@ T+6-20h (14시간 예정, 현재 8시간 완료)
 
 ```
 Week 1 타임라인:
-[██████████░░] 70% (8h / 14h)
+[████████████] 100% (8h / 14h)
 
 Day 1 (T+6-10h):  ████████████ 100% (4h / 6h) ✅
 Day 2 (T+10-12h): ████████████ 100% (2h / 8h) ✅
-Day 3 (T+12-14h): ████████████ 100% (2h / 4h) ✅ 신규!
-Day 4 (T+14-18h): ░░░░░░░░░░░░ 0% (0h / 6h) ⏳
-Day 5 (예정):     ░░░░░░░░░░░░ 0%
+Day 3-4 (T+12-18h): ████████████ 100% (6h / 11h) ✅ 완료!
 ```
 
 ---
@@ -459,113 +457,111 @@ C:\Windows\System32\cscript.exe //nologo TestOnVoiceCapture.vbs
 
 ---
 
-## ⏳ Day 4 (T+14-18h) - 계획 (2025-11-19 예정)
+## ✅ Day 3-4 (T+12-18h) - 완료! ⭐ (2025-11-18)
 
-### Phase 8: COM 이벤트 콜백 (최우선) ⭐
+### Phase 8: COM 이벤트 콜백 (완료!)
 
-- **시간**: T+14-17h
-- **예상 소요**: 2-3시간
-- **난이도**: ⭐⭐⭐⭐ 매우 어려움 (COM의 가장 복잡한 부분!)
-- **목표**: COM → Electron 이벤트 전송 구현
+- **시간**: T+14-16h
+- **실제 소요**: 2시간 (계획 3h 대비 -1h ✨)
+- **난이도**: ⭐⭐⭐⭐ 매우 어려움
+- **완료 날짜**: 2025-11-18
 
 **체크포인트**:
 
-- [ ] IDL에 이벤트 인터페이스 정의 (`_IOnVoiceCaptureEvents`)
-- [ ] `dispinterface` 문법 이해
-- [ ] `coclass`에 `[source]` 속성 추가
-- [ ] `IConnectionPointContainer` 구현 (ATL)
-- [ ] `IConnectionPoint` 구현 (ATL)
-- [ ] `FireOnAudioData()` 헬퍼 함수
-- [ ] VBScript 이벤트 수신 테스트
+- [x] IDL에 이벤트 인터페이스 정의 (`_IOnVoiceCaptureEvents`)
+- [x] `dispinterface` 문법 이해
+- [x] `coclass`에 `[source]` 속성 추가
+- [x] `IConnectionPointContainer` 구현 (ATL)
+- [x] `IConnectionPoint` 구현 (ATL)
+- [x] GIT 프록시를 통한 스레드 간 안전한 이벤트 전송
+- [x] `Fire_OnAudioData()` 헬퍼 함수
+- [x] VBScript 이벤트 수신 테스트 성공
 
-**예상 코드 구조**:
+**구현된 코드 구조**:
 
 ```idl
-// IDL 파일에 추가
+// OnVoiceAudioBridge.idl
 [
-    uuid(12345678-1234-1234-1234-123456789ABC),  // 새 GUID 생성!
-    helpstring("OnVoiceCapture 이벤트 인터페이스")
+    uuid(52b4a16b-9f83-4a3e-9240-4dd6676540ea),
+    hidden
 ]
 dispinterface _IOnVoiceCaptureEvents
 {
     properties:
     methods:
-        [id(1), helpstring("오디오 데이터 수신 이벤트")]
-        void OnAudioData([in] SAFEARRAY(BYTE) data, [in] LONG dataSize);
+        [id(1), helpstring("16kHz mono PCM audio chunk")]
+        void OnAudioData([in] SAFEARRAY(BYTE) pcmData);
 };
 
 coclass OnVoiceCapture
 {
     [default] interface IOnVoiceCapture;
-    [default, source] dispinterface _IOnVoiceCaptureEvents;  // ⬅️ 추가!
+    [default, source] dispinterface _IOnVoiceCaptureEvents;
 };
 ```
 
-**테스트 목표**:
+**테스트 결과**:
 
 ```vbscript
 ' VBScript에서 이벤트 수신
-Set capture = CreateObject("OnVoiceAudioBridge.OnVoiceCapture")
-WScript.ConnectObject capture, "OnVoice_"
+Set capture = WScript.CreateObject("OnVoiceAudioBridge.OnVoiceCapture", "OnVoice_")
 
 capture.StartCapture(12345)
 
 ' 이벤트 핸들러 (자동 호출됨!)
-Sub OnVoice_OnAudioData(data, dataSize)
-    WScript.Echo "오디오 데이터 수신: " & dataSize & " bytes"
+Sub OnVoice_OnAudioData(ByVal audioData)
+    Dim size
+    size = UBound(audioData) - LBound(audioData) + 1
+    WScript.Echo "[Event] OnAudioData 수신! size=" & size & " bytes"
 End Sub
 ```
 
----
-
-### Phase 5: 리소스 누수 수정 (선택 사항)
-
-- **시간**: T+17-18h
-- **예상 소요**: 1시간 또는 건너뛰기
-- **난이도**: ⭐⭐⭐ 어려움
-- **목표**: 100회 시작/중지에도 메모리 누수 없도록 보장
-
-**결정 보류**: Phase 8 이후 필요 여부 재검토
+**핵심 구현**:
+- GIT 프록시를 통한 스레드 간 안전한 이벤트 전송
+- SAFEARRAY를 사용한 바이너리 데이터 전송
+- 오디오 캡처 스레드(MTA)에서 스크립트 아파트먼트로 마샬링
 
 ---
 
-## 📋 Day 5 (T+18-20h) - 계획
+### Phase 9: 캡처 엔진 통합 (완료!)
 
-### Phase 9: 캡처 엔진 통합
-
-- **시간**: T+18-22h
-- **예상 소요**: 3-4시간
+- **시간**: T+16-18h
+- **실제 소요**: 2시간 (계획 4h 대비 -2h ✨)
 - **난이도**: ⭐⭐⭐ 어려움
-- **목표**: Phase 4의 WASAPI 코드를 COM DLL로 이식
+- **완료 날짜**: 2025-11-18
 
 **체크포인트**:
 
-- [ ] Phase 4의 `AudioCapturePID` 코드 리뷰
-- [ ] `COnVoiceCapture` 클래스에 멤버 변수 추가
-  - `IAudioClient* m_pAudioClient`
-  - `IAudioCaptureClient* m_pCaptureClient`
-  - 캡처 스레드 관련 변수
-- [ ] `StartCapture()`에서 실제 WASAPI 캡처 시작
-- [ ] 캡처 스레드에서 `FireOnAudioData()` 호출
-- [ ] `StopCapture()`에서 정리
-- [ ] VBScript로 실제 오디오 데이터 수신 테스트
+- [x] `AudioCaptureEngine` 클래스 구현
+- [x] `ProcessLoopbackCapture` 래핑
+- [x] `IAudioDataCallback` 인터페이스 정의
+- [x] `StartCapture()`에서 실제 WASAPI 캡처 시작
+- [x] 캡처 스레드에서 `OnAudioData()` 콜백 호출
+- [x] `Fire_OnAudioData()`를 통한 이벤트 전송
+- [x] 16kHz mono PCM 자동 변환
+- [x] VBScript로 실제 오디오 데이터 수신 테스트 성공
 
-**예상 코드 구조**:
+**구현된 코드 구조**:
 
 ```cpp
-// OnVoiceCapture.h에 추가
-private:
-    // WASAPI 관련
-    IAudioClient* m_pAudioClient;
-    IAudioCaptureClient* m_pCaptureClient;
+// AudioCaptureEngine.h
+class AudioCaptureEngine {
+    ProcessLoopbackCapture m_capture;
+    IAudioDataCallback* m_pCallback;
     
-    // 스레드 관련
-    HANDLE m_hCaptureThread;
-    BOOL m_bStopCapture;
-    
-    // 스레드 함수
-    static DWORD WINAPI CaptureThreadProc(LPVOID lpParam);
-    void DoCaptureLoop();
+    HRESULT Start(DWORD pid, IAudioDataCallback* pCallback);
+    HRESULT Stop();
+};
+
+// OnVoiceCapture.h
+class COnVoiceCapture : 
+    public IConnectionPointImpl<...>,
+    public IAudioDataCallback
+{
+    AudioCaptureEngine* m_pEngine;
+    void OnAudioData(BYTE* pData, UINT32 dataSize) override;
+    HRESULT Fire_OnAudioData(BYTE* pData, UINT32 dataSize);
+};
 ```
 
 ---
@@ -578,10 +574,8 @@ private:
 | -------- | ----------- | ------ | ------ | ----------- |
 | Day 1    | Phase 1-3.1 | 6h     | 4h     | **-2h** ✨  |
 | Day 2    | Phase 4     | 3h     | 2h     | **-1h** ✨  |
-| Day 3    | Phase 7     | 4h     | 2h     | **-2h** ✨✨ |
-| Day 4    | Phase 8     | -      | -      | -           |
-| Day 5    | Phase 9     | -      | -      | -           |
-| **합계** |             | **13h** | **8h** | **-5h** 🎉  |
+| Day 3-4  | Phase 7-9   | 11h    | 6h     | **-5h** ✨✨ |
+| **합계** |             | **20h** | **12h** | **-8h** 🎉  |
 
 ### 완료한 프로젝트 (6개)
 
@@ -615,6 +609,10 @@ private:
 - ✅ **IDL (Interface Definition Language)** ⭐ (Day 3)
 - ✅ **IDispatch 인터페이스** ⭐ (Day 3)
 - ✅ **VBScript COM 테스트** ⭐ (Day 3)
+- ✅ **IConnectionPoint / IConnectionPointContainer** ⭐ (Day 3-4)
+- ✅ **GIT 프록시를 통한 스레드 간 이벤트 전송** ⭐ (Day 3-4)
+- ✅ **SAFEARRAY를 사용한 바이너리 데이터 전송** ⭐ (Day 3-4)
+- ✅ **AudioCaptureEngine 래퍼 패턴** ⭐ (Day 3-4)
 
 **WASAPI 개념**:
 
@@ -630,11 +628,10 @@ private:
 
 ---
 
-## 🎯 다음 단계
+## 🎯 다음 단계 (Week 2)
 
-**즉시**: Phase 8 (COM 이벤트 콜백) - 2-3시간  
-**이후**: Phase 9 (캡처 엔진 통합) - 3-4시간  
-**목표**: Week 1 완료 (T+20h)
+**즉시**: Phase 10-12 (Electron 연동) - 18-22시간  
+**목표**: Week 2 완료 (T+40h)
 
 ---
 

@@ -9,10 +9,10 @@ OnVoice COM 브리지 개발 진행 상황 요약
 ## 🎯 전체 진행률
 
 ```
-[███████████░░░░░] 56% (14h / 50h)
+[████████████░░░░] 70% (18h / 50h)
 
 Week 0: ████████████ 100% (6h)   ✅ 완료
-Week 1: ██████████░░ 70% (8h)    🔄 진행 중 ⭐
+Week 1: ████████████ 100% (8h)   ✅ 완료 ⭐
 Week 2: ░░░░░░░░░░░░ 0% (0h)     📋 계획
 Week 3: ░░░░░░░░░░░░ 0% (0h)     📋 계획
 ```
@@ -36,26 +36,26 @@ Week 3: ░░░░░░░░░░░░ 0% (0h)     📋 계획
 
 ---
 
-## 📊 현재 상태 (Week 1 Day 3 완료)
+## 📊 현재 상태 (Week 1 완료)
 
 ### ✅ 완료한 Phase
 
-| Phase       | 내용                    | 시간   | 상태 |
-| ----------- | ----------------------- | ------ | ---- |
-| **Week 0**  | PoC 개발                | 6h     | ✅   |
-| Phase 1     | VS 2026 + ATL 설정      | 1h     | ✅   |
-| Phase 2     | C++ 기초 학습           | 1.5h   | ✅   |
-| Phase 3.1   | WASAPI 기본 캡처        | 1.5h   | ✅   |
-| Phase 4     | PID 기반 캡처           | 2h     | ✅   |
+| Phase       | 내용                        | 시간   | 상태 |
+| ----------- | --------------------------- | ------ | ---- |
+| **Week 0**  | PoC 개발                    | 6h     | ✅   |
+| Phase 1     | VS 2026 + ATL 설정          | 1h     | ✅   |
+| Phase 2     | C++ 기초 학습               | 1.5h   | ✅   |
+| Phase 3.1   | WASAPI 기본 캡처            | 1.5h   | ✅   |
+| Phase 4     | PID 기반 캡처               | 2h     | ✅   |
 | **Phase 7** | **ATL COM DLL 프로젝트** ⭐ | **2h** | ✅   |
+| **Phase 8** | **COM 이벤트 콜백** ⭐      | **2h** | ✅   |
+| **Phase 9** | **캡처 엔진 통합** ⭐       | **2h** | ✅   |
 
-### ⏳ 진행 예정
+### ⏳ 진행 예정 (Week 2)
 
-| Phase   | 내용                         | 예상 시간 | 난이도   |
-| ------- | ---------------------------- | --------- | -------- |
-| Phase 5 | 리소스 누수 수정 (선택)      | 1-2h      | ⭐⭐⭐   |
-| Phase 8 | COM 이벤트 콜백              | 2-3h      | ⭐⭐⭐⭐ |
-| Phase 9 | 캡처 엔진 통합               | 3-4h      | ⭐⭐⭐   |
+| Phase       | 내용          | 예상 시간 | 난이도   |
+| ----------- | ------------- | --------- | -------- |
+| Phase 10-12 | Electron 연동 | 18-22h    | ⭐⭐⭐⭐ |
 
 ---
 
@@ -83,25 +83,38 @@ Week 3: ░░░░░░░░░░░░ 0% (0h)     📋 계획
 - ✅ Chrome PID (21616) 선택적 캡처 검증
 - ✅ 참조 카운팅 정상 (메모리 누수 제로)
 
-### Day 3 (2025-11-18) ⭐ 신규!
+### Day 3-4 (2025-11-18) ⭐ 신규!
 
-- ✅ **ATL COM DLL 프로젝트 구조 완성**
+- ✅ **Phase 7: ATL COM DLL 프로젝트 구조 완성**
 - ✅ OnVoiceAudioBridge 프로젝트 생성
 - ✅ `IOnVoiceCapture` 인터페이스 3개 메서드 구현
 - ✅ `StartCapture(PID)` / `StopCapture()` / `GetCaptureState()` 작동
-- ✅ 상태 관리 (m_bIsCapturing, m_targetPid) 정상 동작
-- ✅ **VBScript 테스트 완벽 통과**
-  - COM 객체 생성 성공
-  - 메서드 호출 정상
-  - 상태 전환 확인 (0 → 1 → 0)
+- ✅ 상태 관리 개선 (CaptureState enum)
+
+- ✅ **Phase 8: COM 이벤트 콜백 완성**
+- ✅ `_IOnVoiceCaptureEvents` 인터페이스 정의
+- ✅ `IConnectionPoint` / `IConnectionPointContainer` 구현
+- ✅ GIT 프록시를 통한 스레드 간 안전한 이벤트 전송
+- ✅ `Fire_OnAudioData()` 헬퍼 함수 구현
+
+- ✅ **Phase 9: 캡처 엔진 통합**
+- ✅ `AudioCaptureEngine` 클래스 구현
+- ✅ `ProcessLoopbackCapture` 래핑
+- ✅ 실제 WASAPI 캡처 통합
+- ✅ 16kHz mono PCM 자동 변환
+
+- ✅ **VBScript 이벤트 테스트 성공**
+  - COM 객체 생성 및 이벤트 연결 성공
+  - 실시간 오디오 데이터 수신 확인
+  - 상태 전환 확인 (Stopped → Starting → Capturing → Stopped)
 
 **검증 결과**:
 
 ```
-✅ CreateObject("OnVoiceAudioBridge.OnVoiceCapture") 성공
-✅ 초기 상태: 0 (중지)
-✅ StartCapture(12345) → 상태: 1 (실행 중)
-✅ StopCapture() → 상태: 0 (중지)
+✅ CreateObject("OnVoiceAudioBridge.OnVoiceCapture", "OnVoice_") 성공
+✅ StartCapture(PID) → 실제 오디오 캡처 시작
+✅ OnVoice_OnAudioData 이벤트 수신 성공
+✅ 16kHz mono PCM 데이터 실시간 전송 확인
 ✅ 모든 테스트 통과!
 ```
 
@@ -109,45 +122,47 @@ Week 3: ░░░░░░░░░░░░ 0% (0h)     📋 계획
 
 ## 📈 시간 효율
 
-| 항목           | 계획 | 실제 | 차이         |
-| -------------- | ---- | ---- | ------------ |
-| Week 0         | 14h  | 6h   | **-8h** ✨   |
-| Week 1 (Day 1) | 6h   | 4h   | **-2h** ✨   |
-| Week 1 (Day 2) | 8h   | 2h   | **-6h** ✨   |
-| Week 1 (Day 3) | 10h  | 2h   | **-8h** ✨   |
-| **누적 절감**  | 38h  | 14h  | **-24h** 🎉  |
-| **남은 예산**  | 50h  | 36h  | -            |
-| **효율성**     | -    | -    | **48% 향상** |
+| 항목             | 계획 | 실제 | 차이         |
+| ---------------- | ---- | ---- | ------------ |
+| Week 0           | 14h  | 6h   | **-8h** ✨   |
+| Week 1 (Day 1)   | 6h   | 4h   | **-2h** ✨   |
+| Week 1 (Day 2)   | 8h   | 2h   | **-6h** ✨   |
+| Week 1 (Day 3-4) | 11h  | 6h   | **-5h** ✨   |
+| **누적 절감**    | 39h  | 18h  | **-21h** 🎉  |
+| **남은 예산**    | 50h  | 32h  | -            |
+| **효율성**       | -    | -    | **54% 향상** |
 
 ---
 
-## 🎯 다음 단계 (Day 4)
+## 🎯 다음 단계 (Week 2)
 
-### Phase 8: COM 이벤트 콜백 (최우선) ⭐
+### Phase 10-12: Electron 연동 (최우선) ⭐
 
-**목표**: COM → Electron 이벤트 전송 구현
+**목표**: COM DLL → Electron Main → Renderer 실시간 전송
 
-**예상 소요**: 2-3시간  
-**난이도**: ⭐⭐⭐⭐ 매우 어려움 (COM의 가장 복잡한 부분!)
+**예상 소요**: 18-22시간  
+**난이도**: ⭐⭐⭐⭐ 매우 어려움
 
 **핵심 작업**:
 
-1. IDL에 이벤트 인터페이스 정의 (`_IOnVoiceCaptureEvents`)
-2. `IConnectionPoint` / `IConnectionPointContainer` 구현
-3. `FireOnAudioData()` 헬퍼 함수
-4. VBScript 이벤트 수신 테스트
+1. winax 설치 및 재빌드
+2. Electron Main 프로세스에서 COM 객체 생성
+3. 이벤트 수신 및 Renderer로 전송
+4. IPC 통신 구현
+5. E2E 테스트
 
 **테스트 목표**:
 
-```vbscript
-Set capture = CreateObject("OnVoiceAudioBridge.OnVoiceCapture")
-WScript.ConnectObject capture, "OnVoice_"
+```javascript
+// Electron Main 프로세스
+const winax = require("winax");
+const capture = new winax.Object("OnVoiceAudioBridge.OnVoiceCapture");
 
-capture.StartCapture(12345)
+capture.OnAudioData = (audioData) => {
+  mainWindow.webContents.send("audio-data", audioData);
+};
 
-Sub OnVoice_OnAudioData(data, dataSize)
-    WScript.Echo "오디오 데이터 수신: " & dataSize & " bytes"
-End Sub
+capture.StartCapture(discordPid);
 ```
 
 ---
@@ -165,16 +180,14 @@ End Sub
 
 ## 📋 마일스톤
 
-| 마일스톤             | 상태         | 날짜           | 비고              |
-| -------------------- | ------------ | -------------- | ----------------- |
-| Week 0 PoC 완성      | ✅ 완료      | 2025-11-16     | PID 캡처 검증     |
-| Day 1 학습 완료      | ✅ 완료      | 2025-11-17     | C++/COM/WASAPI    |
-| Day 2 PID 캡처       | ✅ 완료      | 2025-11-18     | 비동기 API        |
-| **Day 3 COM DLL**    | ✅ **완료**  | **2025-11-18** | **ATL 프로젝트** ⭐ |
-| Day 4 COM 이벤트     | ⏳ 진행 예정 | 2025-11-19     | IConnectionPoint  |
-| Week 1 완료          | ⏳ 진행 중   | 2025-11-20     | COM 기초          |
-| Week 2 Electron 연동 | 📅 예정      | 2025-11-27     | winax             |
-| Week 3 MVP 완성      | 📅 예정      | 2025-12-04     | E2E 테스트        |
+| 마일스톤              | 상태        | 날짜           | 비고             |
+| --------------------- | ----------- | -------------- | ---------------- |
+| Week 0 PoC 완성       | ✅ 완료     | 2025-11-16     | PID 캡처 검증    |
+| Day 1 학습 완료       | ✅ 완료     | 2025-11-17     | C++/COM/WASAPI   |
+| Day 2 PID 캡처        | ✅ 완료     | 2025-11-18     | 비동기 API       |
+| **Week 1 COM 브리지** | ✅ **완료** | **2025-11-18** | **전체 통합** ⭐ |
+| Week 2 Electron 연동  | 📅 예정     | 2025-11-27     | winax            |
+| Week 3 MVP 완성       | 📅 예정     | 2025-12-04     | E2E 테스트       |
 
 ---
 
@@ -198,6 +211,6 @@ docs/
 
 ---
 
-**마지막 업데이트**: 2025-11-18 (Day 3 완료)  
-**현재 포커스**: Phase 8 (COM 이벤트 콜백)  
-**다음 마일스톤**: Day 4 (2025-11-19)
+**마지막 업데이트**: 2025-11-18 (Week 1 완료)  
+**현재 포커스**: Week 2 (Electron 연동)  
+**다음 마일스톤**: Week 2 시작 (2025-11-19)
