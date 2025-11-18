@@ -60,6 +60,11 @@ HRESULT AudioCaptureEngine::Start(DWORD pid, IAudioDataCallback* pCallback)
     }
 
     // 2) 타깃 프로세스 설정 (inclusive: 이 PID 트리만 캡처)
+    //    내부적으로 ProcessLoopbackCapture::StartCapture()에서 다음 설정이 수행됨:
+    //    - AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS 설정
+    //    - AUDIOCLIENT_ACTIVATION_PARAMS 설정
+    //    - PROPVARIANT 래핑
+    //    - ActivateAudioInterfaceAsync 호출 (AudioCapture.cpp 참고)
     err = m_capture.SetTargetProcess(pid, /*bInclusive=*/true);
     if (err != eCaptureError::NONE) {
         printf("[Engine] ❌ SetTargetProcess 실패: %s\n",

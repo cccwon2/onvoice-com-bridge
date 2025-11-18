@@ -216,25 +216,23 @@ int main()
     printf("대상 PID: %lu\n", targetPid);
     printf("프로세스: Chrome 브라우저 (추정)\n");
 
+    // ProcessLoopbackCapture.cpp와 동일한 패턴으로 설정
     AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS loopbackParams = {};
     loopbackParams.TargetProcessId = targetPid;
     loopbackParams.ProcessLoopbackMode =
         PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
 
-    AUDIOCLIENT_ACTIVATION_PARAMS activationParams = {};
-    activationParams.ActivationType =
-        AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
-    activationParams.ProcessLoopbackParams = loopbackParams;
+    AUDIOCLIENT_ACTIVATION_PARAMS blob = {};  // ✅ ProcessLoopbackCapture.cpp와 동일한 변수명 사용
+    blob.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+    blob.ProcessLoopbackParams = loopbackParams;
 
-    PROPVARIANT activateParams;
-    PropVariantInit(&activateParams);
-    activateParams.vt = VT_BLOB;
-    activateParams.blob.cbSize = sizeof(activationParams);
-    activateParams.blob.pBlobData =
-        reinterpret_cast<BYTE*>(&activationParams);
+    PROPVARIANT activation_params = {};  // ✅ ProcessLoopbackCapture.cpp와 동일한 변수명 사용
+    activation_params.vt = VT_BLOB;
+    activation_params.blob.cbSize = sizeof(AUDIOCLIENT_ACTIVATION_PARAMS);
+    activation_params.blob.pBlobData = reinterpret_cast<BYTE*>(&blob);  // ✅ blob (AUDIOCLIENT_ACTIVATION_PARAMS)의 주소를 가리킴
 
     printf("PROPVARIANT 래핑 완료 (크기: %lu 바이트)\n",
-        activateParams.blob.cbSize);
+        activation_params.blob.cbSize);
 
     // ========================================
     // ActivateAudioInterfaceAsync 호출
@@ -261,7 +259,7 @@ int main()
     hr = ActivateAudioInterfaceAsync(
         VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,   // ✅ 핵심 수정
         __uuidof(IAudioClient),
-        &activateParams,
+        &activation_params,  // ✅ 변수명 수정
         pHandler,
         &pAsyncOp);
 
