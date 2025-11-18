@@ -243,13 +243,16 @@ onvoice-com-bridge/
 │   ├── AudioCapture/               # WASAPI 루프백 캡처 (Day 1)
 │   └── AudioCapturePID/            # PID 기반 캡처 (Day 2) ⭐
 │
-├── phase3-com-dll/                 # 🔧 COM DLL (Week 1 진행 중) ⭐
-│   └── OnVoiceAudioBridge/         # ATL COM DLL 프로젝트 (Day 3) ✅
+├── phase3-com-dll/                 # 🔧 COM DLL (Week 1 완료) ⭐
+│   └── OnVoiceAudioBridge/         # ATL COM DLL 프로젝트 (Day 3-4) ✅
 │       ├── OnVoiceAudioBridge.idl  # 인터페이스 정의
-│       ├── OnVoiceCapture.h/.cpp   # 구현
+│       ├── OnVoiceCapture.h/.cpp    # 구현
+│       ├── AudioCaptureEngine.h/.cpp  # 캡처 엔진
+│       ├── TestOnVoiceEvents.vbs    # 이벤트 수신 테스트
+│       ├── TestPidCapture.vbs        # PID 캡처 테스트
+│       ├── TestAudioCaptureEngine.vbs  # 엔진 연동 테스트
 │       └── x64/Debug/
-│           ├── OnVoiceAudioBridge.dll
-│           └── TestOnVoiceCapture.vbs  # VBScript 테스트
+│           └── OnVoiceAudioBridge.dll
 │
 ├── phase4-electron/                # ⚡ Electron 연동 (Week 2 예정)
 │   └── test-winax/
