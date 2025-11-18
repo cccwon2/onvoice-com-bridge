@@ -22,6 +22,41 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
     // TODO: Phase 9에서 WASAPI 캡처 코드 추가
     m_bIsCapturing = TRUE;
 
+    // ========================================
+    // ★ Phase 8-4: 테스트용 더미 오디오 이벤트 한 번 쏘기
+    //    - 나중에 WASAPI 캡처 루프에서 실제 오디오로 교체 예정
+    // ========================================
+    {
+        const LONG dummyLength = 320; // 예시: 320바이트 (짧은 청크)
+
+        SAFEARRAYBOUND bound;
+        bound.lLbound = 0;
+        bound.cElements = dummyLength;
+
+        SAFEARRAY* psa = SafeArrayCreate(VT_UI1, 1, &bound);
+        if (psa != nullptr)
+        {
+            BYTE* pData = nullptr;
+            HRESULT hrAccess = SafeArrayAccessData(psa, (void**)&pData);
+            if (SUCCEEDED(hrAccess) && pData != nullptr)
+            {
+                // 일단 전부 0으로 채움 (무음)
+                ZeroMemory(pData, dummyLength * sizeof(BYTE));
+                SafeArrayUnaccessData(psa);
+
+                // 이벤트 발사
+                HRESULT hrEvent = Fire_OnAudioData(psa);
+                if (FAILED(hrEvent))
+                {
+                    // 디버그 용: 이벤트 실패 시 로그만 남김
+                    OutputDebugStringW(L"[OnVoiceCapture] Fire_OnAudioData failed in test block.\n");
+                }
+            }
+
+            SafeArrayDestroy(psa);
+        }
+    }
+
     return S_OK;  // 성공
 }
 
@@ -71,7 +106,7 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(SAFEARRAY* psaAudio)
     const int nConnections = m_vec.GetSize();
     HRESULT hr = S_OK;
 
-    // OnAudioData의 DISPID는 IDL에서 [id(1)]로 정의했으므로 1
+    // OnAudioData의 DISPID는 IDL에서 [id(1)]으로 정의했으므로 1
     const DISPID dispidOnAudioData = 1;
 
     for (int i = 0; i < nConnections; ++i)
@@ -99,8 +134,8 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(SAFEARRAY* psaAudio)
             DISPATCH_METHOD,
             &dp,
             nullptr,    // 결과값 없음
-            nullptr,    // 예외 정보 사용 안함
-            nullptr     // 인자 오류 인덱스 사용 안함
+            nullptr,    // 예외 정보 사용 안 함
+            nullptr     // 인자 오류 인덱스 사용 안 함
         );
 
         // 첫 번째 실패 코드만 hr에 저장 (참고용)
