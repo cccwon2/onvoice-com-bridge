@@ -4,6 +4,7 @@
 #include "resource.h"
 #include "OnVoiceAudioBridge_i.h"
 #include "AudioCaptureEngine.h"  // ⭐ 오디오 캡처 엔진
+#include "ProcessHelper.h"       // ⭐ 프로세스 찾기 유틸리티
 #include <vector>
 #include <atlbase.h>            // CComGITPtr
 
@@ -86,6 +87,12 @@ public:
 
     // 현재 상태 조회
     STDMETHOD(GetCaptureState)(LONG* pState);
+
+    // Chrome 브라우저 프로세스 찾기
+    STDMETHOD(FindChromeProcess)(LONG* pPid);
+
+    // Discord 프로세스 찾기
+    STDMETHOD(FindDiscordProcess)(LONG* pPid);
 
     // ========================================
     // IAudioDataCallback 구현

@@ -2,6 +2,7 @@
 
 #include "pch.h"
 #include "OnVoiceCapture.h"
+#include "ProcessHelper.h"  // ⭐ 프로세스 찾기 유틸리티
 #include <stdio.h>
 #include <atlcomcli.h>
 #include <OleAuto.h>
@@ -201,6 +202,54 @@ STDMETHODIMP COnVoiceCapture::GetCaptureState(LONG* pState)
 
     *pState = static_cast<LONG>(m_state);
     printf("[COnVoiceCapture] GetCaptureState -> %ld\n", *pState);
+
+    return S_OK;
+}
+
+// Chrome 브라우저 프로세스 찾기
+STDMETHODIMP COnVoiceCapture::FindChromeProcess(LONG* pPid)
+{
+    if (!pPid)
+        return E_POINTER;
+
+    printf("[COnVoiceCapture] FindChromeProcess 호출\n");
+
+    DWORD pid = FindChromeBrowserProcess();
+    *pPid = static_cast<LONG>(pid);
+
+    if (pid == 0)
+    {
+        printf("[COnVoiceCapture] ⚠️  Chrome 프로세스를 찾지 못했습니다.\n");
+        printf("[COnVoiceCapture] 가능한 원인: Chrome이 실행 중이 아닙니다.\n");
+    }
+    else
+    {
+        printf("[COnVoiceCapture] ✅ Chrome 프로세스 발견: PID %lu\n", pid);
+    }
+
+    return S_OK;
+}
+
+// Discord 프로세스 찾기
+STDMETHODIMP COnVoiceCapture::FindDiscordProcess(LONG* pPid)
+{
+    if (!pPid)
+        return E_POINTER;
+
+    printf("[COnVoiceCapture] FindDiscordProcess 호출\n");
+
+    DWORD pid = ::FindDiscordProcess();  // ✅ 전역 네임스페이스 명시
+    *pPid = static_cast<LONG>(pid);
+
+    if (pid == 0)
+    {
+        printf("[COnVoiceCapture] ⚠️  Discord 프로세스를 찾지 못했습니다.\n");
+        printf("[COnVoiceCapture] 가능한 원인: Discord가 실행 중이 아닙니다.\n");
+    }
+    else
+    {
+        printf("[COnVoiceCapture] ✅ Discord 프로세스 발견: PID %lu\n", pid);
+    }
 
     return S_OK;
 }
