@@ -52,8 +52,9 @@ HRESULT AudioCaptureEngine::Start(DWORD pid, IAudioDataCallback* pCallback)
     );
 
     if (err != eCaptureError::NONE) {
-        printf("[Engine] SetCaptureFormat 실패: %s\n",
+        printf("[Engine] ❌ SetCaptureFormat 실패: %s\n",
             LoopbackCaptureConst::GetErrorText(err));
+        printf("[Engine] 가능한 원인: 캡처 형식 파라미터가 잘못됨\n");
         m_pCallback = nullptr;
         return E_FAIL;
     }
@@ -61,8 +62,9 @@ HRESULT AudioCaptureEngine::Start(DWORD pid, IAudioDataCallback* pCallback)
     // 2) 타깃 프로세스 설정 (inclusive: 이 PID 트리만 캡처)
     err = m_capture.SetTargetProcess(pid, /*bInclusive=*/true);
     if (err != eCaptureError::NONE) {
-        printf("[Engine] SetTargetProcess 실패: %s\n",
+        printf("[Engine] ❌ SetTargetProcess 실패: %s\n",
             LoopbackCaptureConst::GetErrorText(err));
+        printf("[Engine] 가능한 원인: PID가 잘못되었거나 캡처가 이미 시작됨\n");
         m_pCallback = nullptr;
         return E_FAIL;
     }
@@ -70,8 +72,9 @@ HRESULT AudioCaptureEngine::Start(DWORD pid, IAudioDataCallback* pCallback)
     // 3) 콜백 등록 (PoC의 AudioCallback 역할)
     err = m_capture.SetCallback(&AudioCaptureEngine::LoopbackCallback, this);
     if (err != eCaptureError::NONE) {
-        printf("[Engine] SetCallback 실패: %s\n",
+        printf("[Engine] ❌ SetCallback 실패: %s\n",
             LoopbackCaptureConst::GetErrorText(err));
+        printf("[Engine] 가능한 원인: 콜백 함수가 NULL이거나 캡처가 이미 시작됨\n");
         m_pCallback = nullptr;
         return E_FAIL;
     }
@@ -83,13 +86,20 @@ HRESULT AudioCaptureEngine::Start(DWORD pid, IAudioDataCallback* pCallback)
     err = m_capture.StartCapture();
     if (err != eCaptureError::NONE) {
         HRESULT hrLast = m_capture.GetLastErrorResult();
-        printf("[Engine] StartCapture 실패: %s (hr=0x%08X)\n",
+        printf("[Engine] ❌ StartCapture 실패: %s (hr=0x%08X)\n",
             LoopbackCaptureConst::GetErrorText(err), hrLast);
+        printf("[Engine] 가능한 원인:\n");
+        printf("[Engine]   1. PID가 잘못됨 (프로세스가 종료됨)\n");
+        printf("[Engine]   2. 해당 프로세스가 오디오를 재생하지 않음\n");
+        printf("[Engine]   3. 오디오 디바이스 문제\n");
+        if (hrLast == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
+            printf("[Engine]   4. VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, PID 조합 문제일 수 있음\n");
+        }
         m_pCallback = nullptr;
         return (hrLast != S_OK) ? hrLast : E_FAIL;
     }
 
-    printf("[Engine] StartCapture 성공 (PID=%lu)\n", pid);
+    printf("[Engine] ✅ StartCapture 성공 (PID=%lu)\n", pid);
     return S_OK;
 }
 
@@ -110,17 +120,19 @@ HRESULT AudioCaptureEngine::Stop()
     eCaptureError err = m_capture.StopCapture();
     if (err != eCaptureError::NONE) {
         HRESULT hrLast = m_capture.GetLastErrorResult();
-        printf("[Engine] StopCapture 실패: %s (hr=0x%08X)\n",
+        printf("[Engine] ⚠️  StopCapture 실패: %s (hr=0x%08X)\n",
             LoopbackCaptureConst::GetErrorText(err), hrLast);
+        printf("[Engine] 가능한 원인: 내부 스레드 종료 중 문제 발생\n");
         m_pCallback = nullptr;
         return (hrLast != S_OK) ? hrLast : E_FAIL;
     }
 
-    // 내부 캡처 스레드가 완전히 종료될 때까지 약간 대기
+    // 내부 캡처 스레드가 완전히 종료될 때까지 대기 (AudioCaptureTest 참고)
+    // ProcessLoopbackCapture의 내부 스레드가 완전히 종료되도록 충분한 시간 확보
     Sleep(200);
 
     m_pCallback = nullptr;
-    printf("[Engine] StopCapture 성공, 상태 READY\n");
+    printf("[Engine] ✅ StopCapture 성공, 상태 READY\n");
     return S_OK;
 }
 

@@ -20,7 +20,8 @@ COnVoiceCapture::~COnVoiceCapture()
     {
         printf("[COnVoiceCapture] AudioCaptureEngine Stop() 호출\n");
         m_pEngine->Stop();
-        Sleep(100); // 내부 스레드 완전 종료 대기
+        // 내부 캡처 스레드가 완전히 종료될 때까지 대기 (AudioCaptureTest 참고)
+        Sleep(200);
 
         delete m_pEngine;
         m_pEngine = nullptr;
@@ -41,14 +42,31 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
 
     if (processId <= 0)
     {
-        printf("[COnVoiceCapture] invalid PID (%ld)\n", processId);
+        printf("[COnVoiceCapture] ❌ 잘못된 PID (%ld)\n", processId);
+        printf("[COnVoiceCapture] 가능한 원인: PID는 0보다 큰 값이어야 합니다.\n");
         return E_INVALIDARG;
     }
 
+    // 프로세스 존재 여부 검증 (AudioCaptureTest 참고)
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(processId));
+    if (hProcess == NULL)
+    {
+        DWORD dwError = GetLastError();
+        printf("[COnVoiceCapture] ❌ 프로세스 열기 실패 (PID=%ld, Error=%lu)\n", processId, dwError);
+        printf("[COnVoiceCapture] 가능한 원인:\n");
+        printf("[COnVoiceCapture]   1. PID가 잘못됨 (프로세스가 종료됨)\n");
+        printf("[COnVoiceCapture]   2. 권한 부족 (관리자 권한 필요할 수 있음)\n");
+        printf("[COnVoiceCapture]   3. 프로세스가 존재하지 않음\n");
+        return HRESULT_FROM_WIN32(dwError);
+    }
+    CloseHandle(hProcess);
+    printf("[COnVoiceCapture] ✅ 프로세스 존재 확인 (PID=%ld)\n", processId);
+
     if (m_state == CaptureState::Starting || m_state == CaptureState::Capturing)
     {
-        printf("[COnVoiceCapture] already starting/capturing (state=%ld)\n",
+        printf("[COnVoiceCapture] ❌ 이미 시작 중이거나 캡처 중 (state=%ld)\n",
             static_cast<LONG>(m_state));
+        printf("[COnVoiceCapture] 가능한 원인: StopCapture()를 먼저 호출하세요.\n");
         return HRESULT_FROM_WIN32(ERROR_BUSY);
     }
 
@@ -106,11 +124,19 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
     if (SUCCEEDED(hr))
     {
         m_state = CaptureState::Capturing;
-        printf("[COnVoiceCapture] StartCapture OK -> state = Capturing\n");
+        printf("[COnVoiceCapture] ✅ StartCapture 성공 -> state = Capturing\n");
     }
     else
     {
-        printf("[COnVoiceCapture] StartCapture FAILED (HR=0x%08X) -> state = Stopped\n", hr);
+        printf("[COnVoiceCapture] ❌ StartCapture 실패 (HR=0x%08X) -> state = Stopped\n", hr);
+        printf("[COnVoiceCapture] 가능한 원인:\n");
+        printf("[COnVoiceCapture]   1. 해당 프로세스가 오디오를 재생하지 않음\n");
+        printf("[COnVoiceCapture]   2. 오디오 디바이스 문제\n");
+        printf("[COnVoiceCapture]   3. WASAPI 초기화 실패\n");
+        if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+        {
+            printf("[COnVoiceCapture]   4. VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, PID 조합 문제일 수 있음\n");
+        }
         m_state = CaptureState::Stopped;
         m_targetPid = 0;
         // 실패 시 GIT 포인터도 버려둔다 (다음 StartCapture에서 다시 세팅)
@@ -142,16 +168,19 @@ STDMETHODIMP COnVoiceCapture::StopCapture()
         hr = m_pEngine->Stop();
         if (SUCCEEDED(hr))
         {
-            printf("[COnVoiceCapture] AudioCaptureEngine Stop() OK\n");
+            printf("[COnVoiceCapture] ✅ AudioCaptureEngine Stop() 성공\n");
+            // 내부 캡처 스레드가 완전히 종료될 때까지 대기 (AudioCaptureTest 참고)
+            Sleep(200);
         }
         else
         {
-            printf("[COnVoiceCapture] AudioCaptureEngine Stop() FAILED (HR=0x%08X)\n", hr);
+            printf("[COnVoiceCapture] ⚠️  AudioCaptureEngine Stop() 실패 (HR=0x%08X)\n", hr);
+            printf("[COnVoiceCapture] 가능한 원인: 내부 스레드 종료 중 문제 발생\n");
         }
     }
     else
     {
-        printf("[COnVoiceCapture] no engine (nothing to stop)\n");
+        printf("[COnVoiceCapture] 엔진 없음 (중지할 것이 없음)\n");
     }
 
     m_state = CaptureState::Stopped;
