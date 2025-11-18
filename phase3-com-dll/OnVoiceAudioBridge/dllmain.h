@@ -4,7 +4,7 @@ class COnVoiceAudioBridgeModule : public ATL::CAtlDllModuleT< COnVoiceAudioBridg
 {
 public :
 	DECLARE_LIBID(LIBID_OnVoiceAudioBridgeLib)
-	DECLARE_REGISTRY_APPID_RESOURCEID(IDR_ONVOICEAUDIOBRIDGE, "{03ece82b-7d84-476f-99e0-1f74529d22e2}")
+	DECLARE_REGISTRY_APPID_RESOURCEID(IDR_ONVOICEAUDIOBRIDGE, "{419618dd-d242-4428-8f62-5651cb46a9be}")
 };
 
 extern class COnVoiceAudioBridgeModule _AtlModule;

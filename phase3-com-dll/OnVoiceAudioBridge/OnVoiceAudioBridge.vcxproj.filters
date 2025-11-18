@@ -14,7 +14,7 @@
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
     <Filter Include="생성 파일">
-      <UniqueIdentifier>{dc0c4ddb-d140-4a69-852b-af8b5696ef25}</UniqueIdentifier>
+      <UniqueIdentifier>{43c006be-d29e-486d-b1ff-59aade26b417}</UniqueIdentifier>
       <SourceControlFiles>False</SourceControlFiles>
     </Filter>
   </ItemGroup>
@@ -40,6 +40,9 @@
     <ClInclude Include="pch.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="OnVoiceCapture.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="OnVoiceAudioBridge.cpp">
@@ -57,6 +60,9 @@
     <ClCompile Include="pch.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="OnVoiceCapture.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="OnVoiceAudioBridge.rc">
@@ -69,6 +75,9 @@
     </None>
     <None Include="OnVoiceAudioBridge.def">
       <Filter>소스 파일</Filter>
+    </None>
+    <None Include="OnVoiceCapture.rgs">
+      <Filter>리소스 파일</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

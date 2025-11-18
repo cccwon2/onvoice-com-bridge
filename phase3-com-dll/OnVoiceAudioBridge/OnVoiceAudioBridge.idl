@@ -8,11 +8,29 @@ import "oaidl.idl";
 import "ocidl.idl";
 
 [
-	uuid(03ece82b-7d84-476f-99e0-1f74529d22e2),
+	object,
+	uuid(43a468da-7889-46c9-99de-38cb93e4e649),
+	dual,
+	nonextensible,
+	pointer_default(unique)
+]
+interface IOnVoiceCapture : IDispatch
+{
+};
+[
+	uuid(419618dd-d242-4428-8f62-5651cb46a9be),
 	version(1.0),
 ]
 library OnVoiceAudioBridgeLib
 {
 	importlib("stdole2.tlb");
+	[
+		uuid(fe3c62ec-02f2-4c63-8266-d538a86fd7f9)
+	]
+	coclass OnVoiceCapture
+	{
+		[default] interface IOnVoiceCapture;
+	};
 };
 
+import "shobjidl.idl";
