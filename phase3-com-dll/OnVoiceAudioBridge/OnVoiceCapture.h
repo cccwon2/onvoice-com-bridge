@@ -74,6 +74,13 @@ public:
 	// 상태 확인
 	STDMETHOD(GetCaptureState)(LONG* pState);
 
+	// ========================================
+	// ★ 이벤트 헬퍼
+	//  - SAFEARRAY(BYTE)로 전달된 오디오 데이터를
+	//    모든 구독자에게 OnAudioData로 브로드캐스트
+	// ========================================
+	HRESULT Fire_OnAudioData(SAFEARRAY* psaAudio);
+
 private:
 	// ========================================
 	// 멤버 변수
