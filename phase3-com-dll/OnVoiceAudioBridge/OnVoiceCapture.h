@@ -1,8 +1,11 @@
 ﻿// OnVoiceCapture.h : COnVoiceCapture 선언
 #pragma once
-#include "resource.h"       // 주 기호입니다.
+
+#include "resource.h"
 #include "OnVoiceAudioBridge_i.h"
-#include "AudioCaptureEngine.h"  // ⭐ 새로 추가
+#include "AudioCaptureEngine.h"  // ⭐ 오디오 캡처 엔진
+#include <vector>
+#include <atlbase.h>            // CComGITPtr
 
 #if defined(_WIN32_WCE) && !defined(_CE_DCOM) && !defined(_CE_ALLOW_SINGLE_THREADED_OBJECTS_IN_MTA)
 #error "단일 스레드 COM 개체는 전체 DCOM 지원을 포함하지 않는 Windows Mobile 플랫폼과 같은 Windows CE 플랫폼에서 제대로 지원되지 않습니다. ATL이 단일 스레드 COM 개체의 생성을 지원하고 단일 스레드 COM 개체 구현을 사용할 수 있도록 _CE_ALLOW_SINGLE_THREADED_OBJECTS_IN_MTA를 정의하십시오. rgs 파일의 스레딩 모델은 DCOM Windows CE가 아닌 플랫폼에서 지원되는 유일한 스레딩 모델이므로 'Free'로 설정되어 있습니다."
@@ -10,92 +13,106 @@
 
 using namespace ATL;
 
-// COnVoiceCapture
+// ========================================
+// CaptureState 열거형
+//  - COM 외부에 숫자값(0~3)으로 전달
+// ========================================
+enum class CaptureState : LONG
+{
+    Stopped = 0,  // 중지
+    Starting = 1,  // 시작 중
+    Capturing = 2,  // 캡처 중
+    Stopping = 3   // 중지 중
+};
+
+// ========================================
+// COnVoiceCapture COM 클래스
+//  - AudioCaptureEngine 을 감싸고
+//  - VBScript / Node.js(winax) 등과 연동
+// ========================================
 class ATL_NO_VTABLE COnVoiceCapture :
-	public CComObjectRootEx<CComSingleThreadModel>,
-	public CComCoClass<COnVoiceCapture, &CLSID_OnVoiceCapture>,
-	public IDispatchImpl<IOnVoiceCapture, &IID_IOnVoiceCapture, &LIBID_OnVoiceAudioBridgeLib, /*wMajor =*/ 1, /*wMinor =*/ 0>,
-	// ================================
-	// ★ 이벤트용 ATL 베이스 클래스 추가
-	// ================================
-	public IConnectionPointContainerImpl<COnVoiceCapture>,                             // 이벤트 컨테이너
-	public IConnectionPointImpl<COnVoiceCapture, &__uuidof(_IOnVoiceCaptureEvents)>,   // _IOnVoiceCaptureEvents 소스
-	public IAudioDataCallback  // ⭐ 새로 추가 - 오디오 데이터 콜백 인터페이스
+    public CComObjectRootEx<CComMultiThreadModel>,
+    public CComCoClass<COnVoiceCapture, &CLSID_OnVoiceCapture>,
+    public IDispatchImpl<IOnVoiceCapture, &IID_IOnVoiceCapture, &LIBID_OnVoiceAudioBridgeLib, 1, 0>,
+    public IConnectionPointContainerImpl<COnVoiceCapture>,
+    public IConnectionPointImpl<COnVoiceCapture, &__uuidof(_IOnVoiceCaptureEvents)>,
+    public IAudioDataCallback   // AudioCaptureEngine → 콜백
 {
 public:
-	COnVoiceCapture()
-	{
-		// 멤버 변수 초기화
-		m_pEngine = nullptr;     // ⭐ 새로 추가
-		m_bIsCapturing = FALSE;  // 초기 상태: 캡처 중지
-		m_targetPid = 0;         // PID 없음
-	}
+    COnVoiceCapture()
+        : m_pEngine(nullptr)
+        , m_state(CaptureState::Stopped)
+        , m_targetPid(0)
+        , m_ownerThreadId(GetCurrentThreadId())
+    {
+    }
 
-	// ⭐ 소멸자 추가
-	~COnVoiceCapture();
+    ~COnVoiceCapture();
 
-	DECLARE_REGISTRY_RESOURCEID(106)
+    DECLARE_REGISTRY_RESOURCEID(106)
 
-	// ================================
-	// COM 맵
-	// ================================
-	BEGIN_COM_MAP(COnVoiceCapture)
-		COM_INTERFACE_ENTRY(IOnVoiceCapture)
-		COM_INTERFACE_ENTRY(IDispatch)
-		COM_INTERFACE_ENTRY(IConnectionPointContainer) // ★ 이벤트 컨테이너 인터페이스 노출
-	END_COM_MAP()
+    BEGIN_COM_MAP(COnVoiceCapture)
+        COM_INTERFACE_ENTRY(IOnVoiceCapture)
+        COM_INTERFACE_ENTRY(IDispatch)
+        COM_INTERFACE_ENTRY(IConnectionPointContainer)
+    END_COM_MAP()
 
-	// ================================
-	// ★ Connection Point 맵
-	// ================================
-	BEGIN_CONNECTION_POINT_MAP(COnVoiceCapture)
-		CONNECTION_POINT_ENTRY(__uuidof(_IOnVoiceCaptureEvents))
-	END_CONNECTION_POINT_MAP()
+    BEGIN_CONNECTION_POINT_MAP(COnVoiceCapture)
+        CONNECTION_POINT_ENTRY(__uuidof(_IOnVoiceCaptureEvents))
+    END_CONNECTION_POINT_MAP()
 
-	DECLARE_PROTECT_FINAL_CONSTRUCT()
+    DECLARE_PROTECT_FINAL_CONSTRUCT()
 
-	HRESULT FinalConstruct()
-	{
-		return S_OK;
-	}
+    HRESULT FinalConstruct()
+    {
+        return S_OK;
+    }
 
-	void FinalRelease()
-	{
-	}
+    void FinalRelease()
+    {
+        // 정리는 소멸자에서 처리
+    }
 
 public:
-	// ========================================
-	// IOnVoiceCapture 인터페이스 구현
-	// ========================================
-	// 캡처 시작
-	STDMETHOD(StartCapture)(LONG processId);
+    // ========================================
+    // IOnVoiceCapture 인터페이스 구현
+    // ========================================
 
-	// 캡처 중지
-	STDMETHOD(StopCapture)();
+    // PID 기반 캡처 시작
+    STDMETHOD(StartCapture)(LONG processId);
 
-	// 상태 확인
-	STDMETHOD(GetCaptureState)(LONG* pState);
+    // 캡처 중지
+    STDMETHOD(StopCapture)();
 
-	// ========================================
-	// ★ IAudioDataCallback 인터페이스 구현 (⭐ 새로 추가)
-	// - AudioCaptureEngine이 오디오 데이터를 캡처하면 이 메서드 호출
-	// ========================================
-	virtual void OnAudioData(BYTE* pData, UINT32 dataSize) override;
+    // 현재 상태 조회
+    STDMETHOD(GetCaptureState)(LONG* pState);
 
-	// ========================================
-	// ★ 이벤트 헬퍼
-	//  - SAFEARRAY(BYTE)로 전달된 오디오 데이터를
-	//    모든 구독자에게 OnAudioData로 브로드캐스트
-	// ========================================
-	HRESULT Fire_OnAudioData(SAFEARRAY* psaAudio);
+    // ========================================
+    // IAudioDataCallback 구현
+    //  - AudioCaptureEngine → COnVoiceCapture 로 PCM 전달
+    // ========================================
+    void OnAudioData(BYTE* pData, UINT32 dataSize) override;
+
+    // ========================================
+    // 이벤트 브로드캐스트 헬퍼
+    //  - RAW PCM → SAFEARRAY(VT_UI1) 로 감싸서
+    //    _IOnVoiceCaptureEvents.OnAudioData(Byte[]) 호출
+    // ========================================
+    HRESULT Fire_OnAudioData(BYTE* pData, UINT32 dataSize);
 
 private:
-	// ========================================
-	// 멤버 변수
-	// ========================================
-	AudioCaptureEngine* m_pEngine;  // ⭐ 새로 추가 - 실제 오디오 캡처 엔진
-	BOOL m_bIsCapturing;            // 캡처 중인지 여부 (TRUE/FALSE)
-	LONG m_targetPid;               // 대상 프로세스 ID
+    // ========================================
+    // 멤버 변수
+    // ========================================
+    AudioCaptureEngine* m_pEngine;       // PID 기반 엔진
+    CaptureState                            m_state;         // 현재 상태
+    LONG                                    m_targetPid;     // 타깃 PID
+    DWORD                                   m_ownerThreadId; // 객체 생성 스레드 ID
+
+    // 🔥 VBScript/JS 이벤트 싱크를 스레드 간 안전하게 호출하기 위한 GIT 프록시들
+    //  - StartCapture할 때 m_vec 에 연결된 sink들을 GIT에 등록
+    //  - 오디오 캡처 스레드에서는 GIT에서 CopyTo() 해서 Invoke 호출
+    std::vector<CComGITPtr<IDispatch>>      m_gitSinks;
 };
 
 OBJECT_ENTRY_AUTO(__uuidof(OnVoiceCapture), COnVoiceCapture)

@@ -46,6 +46,9 @@
     <ClInclude Include="AudioCaptureEngine.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="ProcessLoopbackCapture.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="OnVoiceAudioBridge.cpp">
@@ -67,6 +70,9 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="AudioCaptureEngine.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="ProcessLoopbackCapture.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>

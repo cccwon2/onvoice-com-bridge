@@ -1,66 +1,53 @@
-// AudioCaptureEngine.h
-// ½ÇÁ¦ WASAPI ¿Àµğ¿À Ä¸Ã³¸¦ ´ã´çÇÏ´Â Å¬·¡½º
+ï»¿// AudioCaptureEngine.h
+// PID ê¸°ë°˜ WASAPI Process Loopback ìº¡ì²˜ë¥¼ ë‹´ë‹¹í•˜ëŠ” ë˜í¼ í´ë˜ìŠ¤
 #pragma once
 
 #include <windows.h>
-#include <mmdeviceapi.h>
-#include <audioclient.h>
-#include <avrt.h>
+#include <vector>
 
-// Ä¸Ã³ »óÅÂ¸¦ ³ªÅ¸³»´Â ¿­°ÅÇü
-enum CaptureState {
-    STATE_STOPPED = 0,      // ÁßÁöµÊ
-    STATE_STARTING = 1,     // ½ÃÀÛ Áß
-    STATE_CAPTURING = 2,    // Ä¸Ã³ Áß
-    STATE_STOPPING = 3      // ÁßÁö Áß
-};
+#include "ProcessLoopbackCapture.h"  // PID ê¸°ë°˜ ìº¡ì²˜ ì—”ì§„
 
-// ¿Àµğ¿À µ¥ÀÌÅÍ¸¦ Àü´ŞÇÒ Äİ¹é ÀÎÅÍÆäÀÌ½º
+// COM ìª½(COnVoiceCapture)ìœ¼ë¡œ ì˜¤ë””ì˜¤ ë°ì´í„°ë¥¼ ì „ë‹¬í•˜ê¸° ìœ„í•œ ì½œë°± ì¸í„°í˜ì´ìŠ¤
 class IAudioDataCallback {
 public:
     virtual ~IAudioDataCallback() {}
 
-    // Ä¸Ã³µÈ ¿Àµğ¿À µ¥ÀÌÅÍ¸¦ ¹Ş´Â ÇÔ¼ö
-    // pData: ¿Àµğ¿À µ¥ÀÌÅÍ Æ÷ÀÎÅÍ
-    // dataSize: µ¥ÀÌÅÍ Å©±â (¹ÙÀÌÆ®)
+    // pData: PCM ë°”ì´íŠ¸ í¬ì¸í„°
+    // dataSize: ë°”ì´íŠ¸ ê¸¸ì´
     virtual void OnAudioData(BYTE* pData, UINT32 dataSize) = 0;
 };
 
-// WASAPI¸¦ »ç¿ëÇÑ ÇÁ·Î¼¼½ºº° ¿Àµğ¿À Ä¸Ã³ ¿£Áø
+// PID ê¸°ë°˜ WASAPI ìº¡ì²˜ ì—”ì§„ (ProcessLoopbackCapture thin wrapper)
 class AudioCaptureEngine {
-private:
-    // COM °´Ã¼µé
-    IAudioClient* m_pAudioClient;           // ¿Àµğ¿À ¼¼¼Ç
-    IAudioCaptureClient* m_pCaptureClient;  // Ä¸Ã³ ÀÎÅÍÆäÀÌ½º
-
-    // ½º·¹µå °ü·Ã
-    HANDLE m_hCaptureThread;     // Ä¸Ã³ ½º·¹µå ÇÚµé
-    HANDLE m_hStopEvent;         // ÁßÁö ½ÅÈ£ ÀÌº¥Æ®
-
-    // »óÅÂ
-    CaptureState m_state;        // ÇöÀç »óÅÂ
-    DWORD m_targetPid;           // ´ë»ó ÇÁ·Î¼¼½º ID
-
-    // Äİ¹é
-    IAudioDataCallback* m_pCallback;  // µ¥ÀÌÅÍ ¼ö½ÅÀÚ
-
-    // ½º·¹µå ÇÔ¼ö (staticÀÌ¾î¾ß CreateThread¿¡ Àü´Ş °¡´É)
-    static DWORD WINAPI CaptureThreadProc(LPVOID lpParam);
-
-    // ½ÇÁ¦ Ä¸Ã³ ·ÎÁ÷ (¸â¹ö ÇÔ¼ö)
-    void DoCaptureLoop();
-
 public:
     AudioCaptureEngine();
     ~AudioCaptureEngine();
 
-    // Ä¸Ã³ ½ÃÀÛ (PID ÁöÁ¤)
+    // íŠ¹ì • PID í”„ë¡œì„¸ìŠ¤ì˜ ì˜¤ë””ì˜¤ ìº¡ì²˜ ì‹œì‘
     HRESULT Start(DWORD pid, IAudioDataCallback* pCallback);
 
-    // Ä¸Ã³ ÁßÁö
+    // ìº¡ì²˜ ì¤‘ì§€
     HRESULT Stop();
 
-    // ÇöÀç »óÅÂ È®ÀÎ
-    CaptureState GetState() const { return m_state; }
-    bool IsCapturing() const { return m_state == STATE_CAPTURING; }
+    // í˜„ì¬ ìº¡ì²˜ ì¤‘ì¸ì§€ ì—¬ë¶€
+    bool IsCapturing();
+
+    // (ì„ íƒ) ë””ë²„ê¹…ìš©: ë‚´ë¶€ ìƒíƒœ ê·¸ëŒ€ë¡œ ë…¸ì¶œ
+    eCaptureState GetState();
+
+private:
+    // ProcessLoopbackCapture ì— ë„˜ê¸°ëŠ” static ì½œë°±
+    static void LoopbackCallback(
+        const std::vector<unsigned char>::iterator& begin,
+        const std::vector<unsigned char>::iterator& end,
+        void* userData);
+
+    // ì‹¤ì œ ì½œë°± ì²˜ë¦¬ (IAudioDataCallback ìœ¼ë¡œ ì „ë‹¬)
+    void HandleLoopbackData(
+        const std::vector<unsigned char>::iterator& begin,
+        const std::vector<unsigned char>::iterator& end);
+
+private:
+    ProcessLoopbackCapture m_capture;   // PID ê¸°ë°˜ ìº¡ì²˜ ì—”ì§„
+    IAudioDataCallback* m_pCallback; // COnVoiceCapture ì˜ ì½œë°± (OnAudioData)
 };
