@@ -243,6 +243,7 @@ spDispatch->Invoke(dispidOnAudioData, ...);
 - **[이벤트 시스템 구현](phases/event-system.md)** - IConnectionPoint, GIT 프록시
 - **[캡처 엔진 구현](phases/capture-engine.md)** - AudioCaptureEngine, ProcessLoopbackCapture
 - **[테스트 및 검증](phases/testing.md)** - VBScript 테스트 스크립트
+- **[구현 비교](phases/implementation-comparison.md)** - AudioCapture vs AudioCaptureEngine 차이점 분석
 
 ---
 
