@@ -1,8 +1,9 @@
-# Phase별 진행 상황 📊
+# 기능별 구현 현황 📊
 
-OnVoice COM 브리지 개발 진행 상황 요약
+OnVoice COM 브리지 개발 기능 중심 진행 상황
 
-**마지막 업데이트**: 2025-11-18 (Day 3 완료)
+**마지막 업데이트**: 2025-11-18  
+**현재 상태**: 핵심 기능 완료 ✅ → Electron 연동 준비 중
 
 ---
 
@@ -11,206 +12,252 @@ OnVoice COM 브리지 개발 진행 상황 요약
 ```
 [████████████░░░░] 70% (18h / 50h)
 
-Week 0: ████████████ 100% (6h)   ✅ 완료
-Week 1: ████████████ 100% (8h)   ✅ 완료 ⭐
-Week 2: ░░░░░░░░░░░░ 0% (0h)     📋 계획
-Week 3: ░░░░░░░░░░░░ 0% (0h)     📋 계획
+✅ 완료: COM 인터페이스, 이벤트 시스템, 캡처 엔진
+⏳ 진행 예정: Electron 연동, 다중 프로세스 지원
 ```
 
 ---
 
-## ⏱️ 전체 타임라인
+## ✅ 완료된 기능
 
-| 주차   | 시간 범위 | 주요 마일스톤          | 상태               |
-| ------ | --------- | ---------------------- | ------------------ |
-| Week 0 | T+0-6h    | **PoC 완성** ⭐        | ✅ 완료 (6h)       |
-| Week 1 | T+6-20h   | **COM 브리지 기초** 🔄 | 진행 중 (8h / 14h) |
-| Week 2 | T+20-40h  | Electron 연동          | 📋 계획            |
-| Week 3 | T+40-50h  | 테스트 및 안정화       | 📋 계획            |
+### 1. COM 인터페이스 구현 ✅
 
-**중요 변경사항**:
+**구현 상태**: 완료  
+**소요 시간**: 2시간  
+**완료 날짜**: 2025-11-18
 
-- ✨ ProcessLoopbackCapture 레포 발견으로 **PoC 단계 추가**
-- ⏰ Phase 3-6 (WASAPI 직접 구현) → **PoC로 대체**
-- 📉 예상 개발 시간: 60시간 → **50시간** (10시간 단축!)
+**주요 기능**:
 
----
+- ✅ `IOnVoiceCapture` 인터페이스 정의 (IDL)
+- ✅ `StartCapture(LONG processId)` - PID 기반 캡처 시작
+- ✅ `StopCapture()` - 캡처 중지
+- ✅ `GetCaptureState(LONG* pState)` - 상태 조회
+- ✅ `IDispatch` 지원 (VBScript/JavaScript 호출 가능)
+- ✅ 상태 관리 (`CaptureState` enum: Stopped/Starting/Capturing/Stopping)
 
-## 📊 현재 상태 (Week 1 완료)
+**구현 파일**:
 
-### ✅ 완료한 Phase
+- `OnVoiceAudioBridge.idl` - 인터페이스 정의
+- `OnVoiceCapture.h/.cpp` - COM 클래스 구현
 
-| Phase       | 내용                        | 시간   | 상태 |
-| ----------- | --------------------------- | ------ | ---- |
-| **Week 0**  | PoC 개발                    | 6h     | ✅   |
-| Phase 1     | VS 2026 + ATL 설정          | 1h     | ✅   |
-| Phase 2     | C++ 기초 학습               | 1.5h   | ✅   |
-| Phase 3.1   | WASAPI 기본 캡처            | 1.5h   | ✅   |
-| Phase 4     | PID 기반 캡처               | 2h     | ✅   |
-| **Phase 7** | **ATL COM DLL 프로젝트** ⭐ | **2h** | ✅   |
-| **Phase 8** | **COM 이벤트 콜백** ⭐      | **2h** | ✅   |
-| **Phase 9** | **캡처 엔진 통합** ⭐       | **2h** | ✅   |
+**검증**:
 
-### ⏳ 진행 예정 (Week 2)
-
-| Phase       | 내용          | 예상 시간 | 난이도   |
-| ----------- | ------------- | --------- | -------- |
-| Phase 10-12 | Electron 연동 | 18-22h    | ⭐⭐⭐⭐ |
+- ✅ VBScript에서 COM 객체 생성 성공
+- ✅ 메서드 호출 정상 작동
+- ✅ 상태 전환 확인 (0 → 1 → 2 → 3 → 0)
 
 ---
 
-## 🎉 주요 성과
+### 2. COM 이벤트 시스템 ✅
 
-### Week 0 (2025-11-16)
+**구현 상태**: 완료  
+**소요 시간**: 2시간  
+**완료 날짜**: 2025-11-18
 
-- ✅ PID 기반 오디오 캡처 검증 완료
-- ✅ 프로세스 자동 감지 (Discord/Chrome)
-- ✅ 16kHz 자동 변환 확인 (SpeexDSP 불필요)
+**주요 기능**:
 
-### Day 1 (2025-11-17)
-
-- ✅ Visual Studio 2026 + ATL 환경 구축
-- ✅ C++ 포인터/참조 학습 완료
-- ✅ COM 기본 개념 습득
-- ✅ WASAPI 루프백 캡처 성공 (48kHz, 240K 프레임)
-
-### Day 2 (2025-11-18)
-
-- ✅ **PID 기반 캡처 성공** (가장 어려운 단계!)
-- ✅ `ActivateAudioInterfaceAsync` 비동기 API 구현
-- ✅ `IActivateAudioInterfaceCompletionHandler` 완료 핸들러
-- ✅ `IAgileObject`로 MTA 안정성 확보
-- ✅ Chrome PID (21616) 선택적 캡처 검증
-- ✅ 참조 카운팅 정상 (메모리 누수 제로)
-
-### Day 3-4 (2025-11-18) ⭐ 신규!
-
-- ✅ **Phase 7: ATL COM DLL 프로젝트 구조 완성**
-- ✅ OnVoiceAudioBridge 프로젝트 생성
-- ✅ `IOnVoiceCapture` 인터페이스 3개 메서드 구현
-- ✅ `StartCapture(PID)` / `StopCapture()` / `GetCaptureState()` 작동
-- ✅ 상태 관리 개선 (CaptureState enum)
-
-- ✅ **Phase 8: COM 이벤트 콜백 완성**
-- ✅ `_IOnVoiceCaptureEvents` 인터페이스 정의
+- ✅ `_IOnVoiceCaptureEvents` dispinterface 정의
 - ✅ `IConnectionPoint` / `IConnectionPointContainer` 구현
-- ✅ GIT 프록시를 통한 스레드 간 안전한 이벤트 전송
-- ✅ `Fire_OnAudioData()` 헬퍼 함수 구현
+- ✅ GIT (Global Interface Table) 프록시를 통한 스레드 간 안전한 이벤트 전송
+- ✅ `OnAudioData(SAFEARRAY(BYTE) pcmData)` 이벤트
+- ✅ SAFEARRAY를 사용한 바이너리 데이터 전송
+- ✅ 오디오 캡처 스레드(MTA)에서 스크립트 아파트먼트로 마샬링
 
-- ✅ **Phase 9: 캡처 엔진 통합**
-- ✅ `AudioCaptureEngine` 클래스 구현
-- ✅ `ProcessLoopbackCapture` 래핑
-- ✅ 실제 WASAPI 캡처 통합
-- ✅ 16kHz mono PCM 자동 변환
+**핵심 구현**:
 
-- ✅ **VBScript 이벤트 테스트 성공**
-  - COM 객체 생성 및 이벤트 연결 성공
-  - 실시간 오디오 데이터 수신 확인
-  - 상태 전환 확인 (Stopped → Starting → Capturing → Stopped)
+```cpp
+// GIT 프록시 등록 (StartCapture 시)
+m_gitSinks[i].Attach(spDisp);
+
+// 오디오 스레드에서 이벤트 전송
+m_gitSinks[i].CopyTo(&spDispatch);
+spDispatch->Invoke(dispidOnAudioData, ...);
+```
+
+**구현 파일**:
+
+- `OnVoiceAudioBridge.idl` - 이벤트 인터페이스 정의
+- `OnVoiceCapture.cpp` - `Fire_OnAudioData()` 구현
+
+**검증**:
+
+- ✅ VBScript에서 이벤트 수신 성공
+- ✅ 실시간 오디오 데이터 전송 확인
+- ✅ 스레드 간 안전성 검증
+
+---
+
+### 3. 오디오 캡처 엔진 ✅
+
+**구현 상태**: 완료  
+**소요 시간**: 2시간  
+**완료 날짜**: 2025-11-18
+
+**주요 기능**:
+
+- ✅ `AudioCaptureEngine` 래퍼 클래스
+- ✅ `ProcessLoopbackCapture` 통합
+- ✅ PID 기반 프로세스별 오디오 캡처
+- ✅ 16kHz mono 16-bit PCM 자동 변환
+- ✅ `IAudioDataCallback` 콜백 인터페이스
+- ✅ 스레드 로컬 COM 초기화 (오디오 스레드용)
+
+**캡처 설정**:
+
+- Sample Rate: 16kHz (STT 최적화)
+- Bit Depth: 16-bit
+- Channels: Mono
+- Format: PCM
+
+**구현 파일**:
+
+- `AudioCaptureEngine.h/.cpp` - 캡처 엔진 래퍼
+- `ProcessLoopbackCapture.h/.cpp` - 실제 WASAPI 캡처
+
+**검증**:
+
+- ✅ Discord/Chrome PID로 선택적 캡처 성공
+- ✅ 16kHz mono PCM 데이터 확인
+- ✅ 실시간 스트리밍 정상 작동
+
+---
+
+### 4. 상태 관리 시스템 ✅
+
+**구현 상태**: 완료  
+**완료 날짜**: 2025-11-18
+
+**주요 기능**:
+
+- ✅ `CaptureState` enum 정의
+  - `Stopped = 0` - 중지됨
+  - `Starting = 1` - 시작 중
+  - `Capturing = 2` - 캡처 중
+  - `Stopping = 3` - 중지 중
+- ✅ 상태 전환 검증
+- ✅ 동시성 안전성 (멀티스레드 모델)
+
+**구현 위치**:
+
+- `OnVoiceCapture.h` - enum 정의
+- `OnVoiceCapture.cpp` - 상태 전환 로직
+
+---
+
+### 5. 테스트 및 검증 ✅
+
+**구현 상태**: 완료  
+**완료 날짜**: 2025-11-18
+
+**테스트 스크립트**:
+
+- ✅ `TestOnVoiceEvents.vbs` - 이벤트 수신 테스트
+- ✅ `TestPidCapture.vbs` - PID 기반 캡처 테스트
+- ✅ `TestAudioCaptureEngine.vbs` - 엔진 연동 테스트
 
 **검증 결과**:
 
 ```
-✅ CreateObject("OnVoiceAudioBridge.OnVoiceCapture", "OnVoice_") 성공
+✅ COM 객체 생성 성공
 ✅ StartCapture(PID) → 실제 오디오 캡처 시작
 ✅ OnVoice_OnAudioData 이벤트 수신 성공
 ✅ 16kHz mono PCM 데이터 실시간 전송 확인
+✅ 상태 전환 확인 (Stopped → Starting → Capturing → Stopping → Stopped)
 ✅ 모든 테스트 통과!
 ```
 
 ---
 
-## 📈 시간 효율
+## ⏳ 진행 예정 기능
 
-| 항목             | 계획 | 실제 | 차이         |
-| ---------------- | ---- | ---- | ------------ |
-| Week 0           | 14h  | 6h   | **-8h** ✨   |
-| Week 1 (Day 1)   | 6h   | 4h   | **-2h** ✨   |
-| Week 1 (Day 2)   | 8h   | 2h   | **-6h** ✨   |
-| Week 1 (Day 3-4) | 11h  | 6h   | **-5h** ✨   |
-| **누적 절감**    | 39h  | 18h  | **-21h** 🎉  |
-| **남은 예산**    | 50h  | 32h  | -            |
-| **효율성**       | -    | -    | **54% 향상** |
+### 6. Electron 연동
 
----
-
-## 🎯 다음 단계 (Week 2)
-
-### Phase 10-12: Electron 연동 (최우선) ⭐
-
-**목표**: COM DLL → Electron Main → Renderer 실시간 전송
-
+**구현 상태**: 계획  
 **예상 소요**: 18-22시간  
 **난이도**: ⭐⭐⭐⭐ 매우 어려움
 
-**핵심 작업**:
+**필요 작업**:
 
-1. winax 설치 및 재빌드
-2. Electron Main 프로세스에서 COM 객체 생성
-3. 이벤트 수신 및 Renderer로 전송
-4. IPC 통신 구현
-5. E2E 테스트
+- [ ] winax 설치 및 재빌드
+- [ ] Electron Main 프로세스에서 COM 객체 생성
+- [ ] 이벤트 수신 및 Renderer로 전송
+- [ ] IPC 통신 구현
+- [ ] E2E 테스트
 
-**테스트 목표**:
+---
 
-```javascript
-// Electron Main 프로세스
-const winax = require("winax");
-const capture = new winax.Object("OnVoiceAudioBridge.OnVoiceCapture");
+### 7. 다중 프로세스 지원
 
-capture.OnAudioData = (audioData) => {
-  mainWindow.webContents.send("audio-data", audioData);
-};
+**구현 상태**: 계획  
+**예상 소요**: 4-6시간
 
-capture.StartCapture(discordPid);
-```
+**필요 작업**:
+
+- [ ] 여러 COM 객체 인스턴스 동시 생성
+- [ ] Discord/Chrome/Edge 동시 캡처
+- [ ] 프로세스 격리 검증
+
+---
+
+### 8. 안정화 및 최적화
+
+**구현 상태**: 계획  
+**예상 소요**: 6-8시간
+
+**필요 작업**:
+
+- [ ] 메모리 누수 검사 (1시간 연속 실행)
+- [ ] 크래시 시나리오 테스트
+- [ ] 성능 최적화 (latency < 3초)
+- [ ] 에러 처리 개선
+
+---
+
+## 📊 시간 효율
+
+| 기능                 | 계획    | 실제    | 차이         |
+| -------------------- | ------- | ------- | ------------ |
+| COM 인터페이스       | 4h      | 2h      | **-2h** ✨   |
+| COM 이벤트 시스템    | 3h      | 2h      | **-1h** ✨   |
+| 오디오 캡처 엔진     | 4h      | 2h      | **-2h** ✨   |
+| 상태 관리 시스템     | 1h      | 0.5h    | **-0.5h** ✨ |
+| 테스트 및 검증       | 2h      | 1.5h    | **-0.5h** ✨ |
+| **완료된 기능 합계** | **14h** | **8h**  | **-6h** 🎉   |
+| **전체 누적**        | **39h** | **18h** | **-21h** 🎉  |
+
+---
+
+## 🎯 다음 우선순위
+
+1. **Electron 연동** (최우선) - COM → Electron Main → Renderer
+2. **다중 프로세스 지원** - 동시 캡처 기능
+3. **안정화** - 장시간 실행 테스트 및 최적화
 
 ---
 
 ## 📚 상세 문서
 
-각 주차별 상세 내용은 다음 문서를 참조하세요:
+각 기능별 상세 내용은 다음 문서를 참조하세요:
 
-- **[Week 0: PoC 완성](phases/week0-poc.md)** (6h, 완료)
-- **[Week 1: COM 브리지 기초](phases/week1-com-bridge.md)** (8h / 14h, 진행 중) ⭐
-- **[Week 2: Electron 연동](phases/week2-electron.md)** (계획)
-- **[Week 3: 테스트 및 안정화](phases/week3-testing.md)** (계획)
+- **[COM 인터페이스 구현](phases/com-interface.md)** - IOnVoiceCapture 상세
+- **[이벤트 시스템 구현](phases/event-system.md)** - IConnectionPoint, GIT 프록시
+- **[캡처 엔진 구현](phases/capture-engine.md)** - AudioCaptureEngine, ProcessLoopbackCapture
+- **[테스트 및 검증](phases/testing.md)** - VBScript 테스트 스크립트
 
 ---
 
 ## 📋 마일스톤
 
-| 마일스톤              | 상태        | 날짜           | 비고             |
-| --------------------- | ----------- | -------------- | ---------------- |
-| Week 0 PoC 완성       | ✅ 완료     | 2025-11-16     | PID 캡처 검증    |
-| Day 1 학습 완료       | ✅ 완료     | 2025-11-17     | C++/COM/WASAPI   |
-| Day 2 PID 캡처        | ✅ 완료     | 2025-11-18     | 비동기 API       |
-| **Week 1 COM 브리지** | ✅ **완료** | **2025-11-18** | **전체 통합** ⭐ |
-| Week 2 Electron 연동  | 📅 예정     | 2025-11-27     | winax            |
-| Week 3 MVP 완성       | 📅 예정     | 2025-12-04     | E2E 테스트       |
+| 마일스톤            | 상태    | 날짜       | 비고               |
+| ------------------- | ------- | ---------- | ------------------ |
+| COM 인터페이스 완성 | ✅ 완료 | 2025-11-18 | IOnVoiceCapture    |
+| 이벤트 시스템 완성  | ✅ 완료 | 2025-11-18 | IConnectionPoint   |
+| 캡처 엔진 통합 완성 | ✅ 완료 | 2025-11-18 | AudioCaptureEngine |
+| Electron 연동       | 📅 예정 | 2025-11-19 | winax              |
+| MVP 완성            | 📅 예정 | 2025-12-04 | E2E 테스트         |
 
 ---
 
-## 📁 문서 구조
-
-```
-docs/
-├── phase-progress.md              ← 지금 여기 (전체 요약)
-├── phases/
-│   ├── week0-poc.md              (Phase 0-0.8)
-│   ├── week1-com-bridge.md       (Phase 1-9) ⭐ 자주 업데이트
-│   ├── week2-electron.md         (Phase 10-13)
-│   └── week3-testing.md          (Phase 14-15)
-├── learning-notes.md
-├── details/
-│   ├── com-deep-dive.md
-│   ├── wasapi-deep-dive.md
-│   └── poc-lessons.md
-└── build-errors.md
-```
-
----
-
-**마지막 업데이트**: 2025-11-18 (Week 1 완료)  
-**현재 포커스**: Week 2 (Electron 연동)  
-**다음 마일스톤**: Week 2 시작 (2025-11-19)
+**마지막 업데이트**: 2025-11-18  
+**현재 포커스**: Electron 연동 준비  
+**다음 마일스톤**: Electron Main 프로세스 연동

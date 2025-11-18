@@ -221,16 +221,20 @@ capture.StopCapture()
 ```
 onvoice-com-bridge/
 ├── docs/                           # 📚 문서
-│   ├── learning-notes.md           # 빠른 참조 + Day 1-3 학습 내용 ✅
-│   ├── details/                    # 상세 문서
+│   ├── learning-notes.md           # 빠른 참조 + 핵심 개념 학습 ✅
+│   ├── phase-progress.md           # 기능별 구현 현황 ✅
+│   ├── phases/                     # 기능별 구현 상세
+│   │   ├── com-interface.md        # COM 인터페이스 구현 ⭐
+│   │   ├── event-system.md         # 이벤트 시스템 구현 ⭐
+│   │   ├── capture-engine.md       # 캡처 엔진 구현 ⭐
+│   │   ├── testing.md              # 테스트 및 검증 ⭐
+│   │   ├── week0-poc.md            # PoC 완성 (참고용)
+│   │   └── week1-com-bridge.md     # Week 1 상세 (참고용)
+│   ├── details/                    # 심화 학습
 │   │   ├── com-deep-dive.md        # COM 상세
 │   │   ├── wasapi-deep-dive.md     # WASAPI 상세
 │   │   └── poc-lessons.md          # PoC 학습
-├── phases/                         # 진행 상황 상세 문서
-│   │   ├── week0-poc.md            # PoC 완성 및 검증 상세
-│   │   ├── week1-com-bridge.md     # COM WASAPI bridge 상세
-│   ├── build-errors.md             # 에러 해결
-│   └── phase-progress.md           # 진행 상황 ✅
+│   └── build-errors.md             # 에러 해결
 │
 ├── phase1-console/                 # 🧪 PoC 및 학습 (Week 0 완료) ✅
 │   ├── reference/                  # ProcessLoopbackCapture 원본 참조
@@ -293,19 +297,28 @@ onvoice-com-bridge/
 ```powershell
 # PowerShell에서 실행
 cd phase3-com-dll\OnVoiceAudioBridge\x64\Debug
-C:\Windows\System32\cscript.exe //nologo TestOnVoiceCapture.vbs
 
-# 예상 출력:
-# ==========================================
-# OnVoice COM 브리지 테스트 시작!
-# ==========================================
-# [1단계] COM 객체 생성 중...
-# [OK] COM 객체 생성 성공!
-# [2단계] 초기 상태 확인 중...
-# 초기 상태: 0 (0=중지, 1=실행 중)
-# [OK] 예상대로 중지 상태입니다!
+# 1. 이벤트 수신 테스트 (권장)
+C:\Windows\System32\cscript.exe //nologo ..\..\TestOnVoiceEvents.vbs [PID]
+
+# 2. PID 캡처 테스트
+C:\Windows\System32\cscript.exe //nologo ..\..\TestPidCapture.vbs
+
+# 3. 엔진 연동 테스트
+C:\Windows\System32\cscript.exe //nologo ..\..\TestAudioCaptureEngine.vbs
+
+# 예상 출력 (이벤트 테스트):
+# =========================================
+# OnVoiceCapture 이벤트 테스트 (GIT 버전)
+# =========================================
+# [1] 이벤트 Prefix 포함해서 COM 객체 생성...
+# OK: COM 객체 생성 완료
+# [2] 초기 상태: 0 (0=Stopped,1=Starting,2=Capturing,3=Stopping)
+# [3] StartCapture(12345) 호출...
+# StartCapture 성공 (HR=0)
+# [Event] OnAudioData 수신! size=3200 bytes
+# [Event] OnAudioData 수신! size=3200 bytes
 # ...
-# 모든 테스트 완료!
 ```
 
 ### Day 2 프로젝트 - 가능 ✅
@@ -342,8 +355,8 @@ C:\Windows\System32\cscript.exe //nologo TestOnVoiceCapture.vbs
 
 ```bash
 # Visual Studio에서 열기
-cd phase1-console/poc
-start AudioCaptureTest.sln
+cd phase1-console/AudioCaptureTest
+start AudioCaptureTest.slnx
 
 # 빌드 후 실행
 1. Ctrl + F5 (실행)
@@ -389,9 +402,17 @@ start AudioCaptureTest.sln
 
 ### 빠른 시작
 
-- **[learning-notes.md](docs/learning-notes.md)**: 빠른 참조 + Day 1-3 학습 내용
+- **[learning-notes.md](docs/learning-notes.md)**: 빠른 참조 + 핵심 개념 학습 내용
+- **[phase-progress.md](docs/phase-progress.md)**: 기능별 구현 현황 및 진행 상황
 
-### 상세 문서
+### 기능별 구현 상세
+
+- **[COM 인터페이스 구현](docs/phases/com-interface.md)**: IOnVoiceCapture 인터페이스 상세
+- **[이벤트 시스템 구현](docs/phases/event-system.md)**: IConnectionPoint, GIT 프록시 구현
+- **[캡처 엔진 구현](docs/phases/capture-engine.md)**: AudioCaptureEngine, ProcessLoopbackCapture
+- **[테스트 및 검증](docs/phases/testing.md)**: VBScript 테스트 스크립트 및 검증 결과
+
+### 심화 학습
 
 - **[COM Deep Dive](docs/details/com-deep-dive.md)**: IUnknown, 참조 카운팅, 스마트 포인터
 - **[WASAPI Deep Dive](docs/details/wasapi-deep-dive.md)**: 6단계 초기화, 에러 처리, 최적화
@@ -400,7 +421,6 @@ start AudioCaptureTest.sln
 ### 트러블슈팅
 
 - **[build-errors.md](docs/build-errors.md)**: 빌드 에러 해결 (regsvr32, 링커 에러 등)
-- **[phase-progress.md](docs/phase-progress.md)**: Phase별 상세 진행 기록
 
 ---
 
@@ -558,9 +578,17 @@ capture.StartCapture(discordPid);
 - [ProcessLoopbackCapture GitHub](https://github.com/Naseband/ProcessLoopbackCapture)
 - [ActivateAudioInterfaceAsync](https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-activateaudiointerfaceasync)
 
-### 학습 자료
+### 프로젝트 문서
 
-- [learning-notes.md](docs/learning-notes.md) - 빠른 참조 + Day 1-3 학습
+**기능별 구현 상세**:
+- [COM 인터페이스 구현](docs/phases/com-interface.md) - IOnVoiceCapture 상세
+- [이벤트 시스템 구현](docs/phases/event-system.md) - IConnectionPoint, GIT 프록시
+- [캡처 엔진 구현](docs/phases/capture-engine.md) - AudioCaptureEngine 상세
+- [테스트 및 검증](docs/phases/testing.md) - VBScript 테스트 스크립트
+
+**학습 자료**:
+- [learning-notes.md](docs/learning-notes.md) - 빠른 참조 + 핵심 개념 학습
+- [phase-progress.md](docs/phase-progress.md) - 기능별 구현 현황
 - [COM Deep Dive](docs/details/com-deep-dive.md) - COM 상세
 - [WASAPI Deep Dive](docs/details/wasapi-deep-dive.md) - WASAPI 상세
 
