@@ -4,8 +4,20 @@
 #include "ProcessHelper.h"
 #include <vector>
 #include <stdio.h>
+#include <io.h>
+#include <fcntl.h>
 
 #pragma comment(lib, "psapi.lib")
+
+// ⭐ 한글 출력을 위한 유틸리티 함수
+static void PrintUtf8(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    fflush(stdout);
+}
 
 // 프로세스 명령줄 가져오기
 std::wstring GetProcessCommandLine(DWORD pid)
@@ -17,11 +29,17 @@ std::wstring GetProcessCommandLine(DWORD pid)
     }
 
     // PEB 주소 가져오기
-    PROCESS_BASIC_INFORMATION pbi;
+    PROCESS_BASIC_INFORMATION pbi = {};  // ⭐ 초기화 추가
     typedef NTSTATUS(WINAPI* NtQueryInformationProcessPtr)(
         HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (!ntdll)
+    {
+        CloseHandle(hProcess);
+        return L"";
+    }
+
     auto NtQueryInformationProcess = (NtQueryInformationProcessPtr)
         GetProcAddress(ntdll, "NtQueryInformationProcess");
 
@@ -34,24 +52,45 @@ std::wstring GetProcessCommandLine(DWORD pid)
     NTSTATUS status = NtQueryInformationProcess(
         hProcess, ProcessBasicInformation, &pbi, sizeof(pbi), nullptr);
 
-    if (status != 0)
+    if (status != 0)  // 0 = STATUS_SUCCESS
+    {
+        CloseHandle(hProcess);
+        return L"";
+    }
+
+    // ⭐ NULL 포인터 체크 추가
+    if (!pbi.PebBaseAddress)
     {
         CloseHandle(hProcess);
         return L"";
     }
 
     // PEB 읽기
-    PEB peb;
-    SIZE_T bytesRead;
+    PEB peb = {};  // ⭐ 초기화 추가
+    SIZE_T bytesRead = 0;
     if (!ReadProcessMemory(hProcess, pbi.PebBaseAddress, &peb, sizeof(peb), &bytesRead))
     {
         CloseHandle(hProcess);
         return L"";
     }
 
+    // ⭐ NULL 포인터 체크 추가
+    if (!peb.ProcessParameters)
+    {
+        CloseHandle(hProcess);
+        return L"";
+    }
+
     // RTL_USER_PROCESS_PARAMETERS 읽기
-    RTL_USER_PROCESS_PARAMETERS params;
+    RTL_USER_PROCESS_PARAMETERS params = {};  // ⭐ 초기화 추가
     if (!ReadProcessMemory(hProcess, peb.ProcessParameters, &params, sizeof(params), &bytesRead))
+    {
+        CloseHandle(hProcess);
+        return L"";
+    }
+
+    // ⭐ CommandLine 유효성 체크 추가
+    if (!params.CommandLine.Buffer || params.CommandLine.Length == 0)
     {
         CloseHandle(hProcess);
         return L"";
@@ -78,10 +117,11 @@ DWORD FindChromeBrowserProcess()
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE)
     {
+        PrintUtf8("[ProcessHelper] CreateToolhelp32Snapshot failed (error=%lu)\n", GetLastError());
         return 0;
     }
 
-    PROCESSENTRY32W pe32;
+    PROCESSENTRY32W pe32 = {};  // ⭐ 초기화 추가
     pe32.dwSize = sizeof(PROCESSENTRY32W);
 
     std::vector<DWORD> chromePids;
@@ -100,7 +140,13 @@ DWORD FindChromeBrowserProcess()
     }
     CloseHandle(hSnapshot);
 
-    printf("[ProcessHelper] Chrome 프로세스 %zu개 발견, 분석 중...\n", chromePids.size());
+    if (chromePids.empty())
+    {
+        PrintUtf8("[ProcessHelper] Chrome not found\n");
+        return 0;
+    }
+
+    PrintUtf8("[ProcessHelper] Chrome process count: %zu, analyzing...\n", chromePids.size());
 
     // 각 프로세스의 명령줄 확인
     for (DWORD pid : chromePids)
@@ -110,13 +156,13 @@ DWORD FindChromeBrowserProcess()
         // --type= 플래그가 없으면 브라우저 프로세스!
         if (!cmdLine.empty() && cmdLine.find(L"--type=") == std::wstring::npos)
         {
-            printf("[ProcessHelper] ✅ Chrome 브라우저 프로세스 발견: PID %lu\n", pid);
+            PrintUtf8("[ProcessHelper] Chrome browser process found: PID %lu\n", pid);
             return pid;
         }
     }
 
     // 명령줄 확인 실패 시 fallback: 메모리 가장 큰 것
-    printf("[ProcessHelper] ⚠️  명령줄 확인 실패, 메모리 기준으로 찾는 중...\n");
+    PrintUtf8("[ProcessHelper] CommandLine check failed, finding by memory size...\n");
 
     SIZE_T maxMemory = 0;
     DWORD browserPid = 0;
@@ -126,7 +172,7 @@ DWORD FindChromeBrowserProcess()
         HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
         if (hProcess)
         {
-            PROCESS_MEMORY_COUNTERS pmc;
+            PROCESS_MEMORY_COUNTERS pmc = {};  // ⭐ 초기화 추가
             if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc)))
             {
                 if (pmc.WorkingSetSize > maxMemory)
@@ -141,8 +187,12 @@ DWORD FindChromeBrowserProcess()
 
     if (browserPid > 0)
     {
-        printf("[ProcessHelper] ✅ Chrome 메인 프로세스 (메모리 기준): PID %lu (%.1f MB)\n",
+        PrintUtf8("[ProcessHelper] Chrome main process (by memory): PID %lu (%.1f MB)\n",
             browserPid, maxMemory / 1024.0 / 1024.0);
+    }
+    else
+    {
+        PrintUtf8("[ProcessHelper] Chrome browser process not found\n");
     }
 
     return browserPid;
@@ -154,10 +204,11 @@ DWORD FindDiscordProcess()
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE)
     {
+        PrintUtf8("[ProcessHelper] CreateToolhelp32Snapshot failed (error=%lu)\n", GetLastError());
         return 0;
     }
 
-    PROCESSENTRY32W pe32;
+    PROCESSENTRY32W pe32 = {};  // ⭐ 초기화 추가
     pe32.dwSize = sizeof(PROCESSENTRY32W);
 
     if (Process32FirstW(hSnapshot, &pe32))
@@ -169,13 +220,13 @@ DWORD FindDiscordProcess()
             {
                 DWORD pid = pe32.th32ProcessID;
                 CloseHandle(hSnapshot);
-                printf("[ProcessHelper] ✅ Discord 발견: PID %lu\n", pid);
+                PrintUtf8("[ProcessHelper] Discord found: PID %lu\n", pid);
                 return pid;
             }
         } while (Process32NextW(hSnapshot, &pe32));
     }
 
     CloseHandle(hSnapshot);
+    PrintUtf8("[ProcessHelper] Discord not found\n");
     return 0;
 }
-

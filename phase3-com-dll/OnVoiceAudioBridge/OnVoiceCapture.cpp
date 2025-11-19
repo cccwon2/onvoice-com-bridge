@@ -2,26 +2,32 @@
 
 #include "pch.h"
 #include "OnVoiceCapture.h"
-#include "ProcessHelper.h"  // ⭐ 프로세스 찾기 유틸리티
+#include "ProcessHelper.h"
 #include <stdio.h>
 #include <atlcomcli.h>
 #include <OleAuto.h>
 
 // ========================================
 // 소멸자: AudioCaptureEngine 정리
+// ⭐ GIT 정리 완전 제거 - COM 런타임이 자동 정리
 // ========================================
 COnVoiceCapture::~COnVoiceCapture()
 {
     printf("[COnVoiceCapture] Destructor start\n");
 
-    // GIT 포인터 정리
-    m_gitSinks.clear();
+    // ⭐ GIT 포인터는 절대 건드리지 않음!
+    // CComGITPtr의 소멸자가 자동으로 Revoke()를 호출
+    // 명시적으로 clear()하면 Assertion 발생
+    if (!m_gitSinks.empty())
+    {
+        printf("[COnVoiceCapture] GIT sinks will be auto-cleaned by COM runtime (count=%zu)\n",
+            m_gitSinks.size());
+    }
 
     if (m_pEngine)
     {
         printf("[COnVoiceCapture] AudioCaptureEngine Stop() 호출\n");
         m_pEngine->Stop();
-        // 내부 캡처 스레드가 완전히 종료될 때까지 대기 (AudioCaptureTest 참고)
         Sleep(200);
 
         delete m_pEngine;
@@ -44,20 +50,15 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
     if (processId <= 0)
     {
         printf("[COnVoiceCapture] ❌ 잘못된 PID (%ld)\n", processId);
-        printf("[COnVoiceCapture] 가능한 원인: PID는 0보다 큰 값이어야 합니다.\n");
         return E_INVALIDARG;
     }
 
-    // 프로세스 존재 여부 검증 (AudioCaptureTest 참고)
+    // 프로세스 존재 여부 검증
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(processId));
     if (hProcess == NULL)
     {
         DWORD dwError = GetLastError();
         printf("[COnVoiceCapture] ❌ 프로세스 열기 실패 (PID=%ld, Error=%lu)\n", processId, dwError);
-        printf("[COnVoiceCapture] 가능한 원인:\n");
-        printf("[COnVoiceCapture]   1. PID가 잘못됨 (프로세스가 종료됨)\n");
-        printf("[COnVoiceCapture]   2. 권한 부족 (관리자 권한 필요할 수 있음)\n");
-        printf("[COnVoiceCapture]   3. 프로세스가 존재하지 않음\n");
         return HRESULT_FROM_WIN32(dwError);
     }
     CloseHandle(hProcess);
@@ -67,7 +68,6 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
     {
         printf("[COnVoiceCapture] ❌ 이미 시작 중이거나 캡처 중 (state=%ld)\n",
             static_cast<LONG>(m_state));
-        printf("[COnVoiceCapture] 가능한 원인: StopCapture()를 먼저 호출하세요.\n");
         return HRESULT_FROM_WIN32(ERROR_BUSY);
     }
 
@@ -85,12 +85,9 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
         printf("[COnVoiceCapture] AudioCaptureEngine created\n");
     }
 
-    // 이 객체를 소유한 스레드 ID(대개 cscript main thread) 갱신
     m_ownerThreadId = GetCurrentThreadId();
 
     // 🔥 현재 연결된 이벤트 싱크들을 GIT에 등록
-    //  - m_vec : ATL Connection Point 내부의 sink 리스트
-    //  - m_gitSinks : 오디오 스레드에서 사용할 프록시 리스트
     m_gitSinks.clear();
     {
         const int nConnections = m_vec.GetSize();
@@ -111,7 +108,6 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
 
             HRESULT hrGit = m_gitSinks[i].Attach(spDisp);
             printf("  [GIT prep %d] Attach HR=0x%08X\n", i, hrGit);
-            // 실패해도 일단 넘어감 (그 인덱스는 나중에 CopyTo 실패할 것)
         }
     }
 
@@ -130,24 +126,15 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
     else
     {
         printf("[COnVoiceCapture] ❌ StartCapture 실패 (HR=0x%08X) -> state = Stopped\n", hr);
-        printf("[COnVoiceCapture] 가능한 원인:\n");
-        printf("[COnVoiceCapture]   1. 해당 프로세스가 오디오를 재생하지 않음\n");
-        printf("[COnVoiceCapture]   2. 오디오 디바이스 문제\n");
-        printf("[COnVoiceCapture]   3. WASAPI 초기화 실패\n");
-        if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
-        {
-            printf("[COnVoiceCapture]   4. VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, PID 조합 문제일 수 있음\n");
-        }
         m_state = CaptureState::Stopped;
         m_targetPid = 0;
-        // 실패 시 GIT 포인터도 버려둔다 (다음 StartCapture에서 다시 세팅)
         m_gitSinks.clear();
     }
 
     return hr;
 }
 
-// 캡처 중지
+// 캡처 중지 ⭐ 수정됨
 STDMETHODIMP COnVoiceCapture::StopCapture()
 {
     printf("[COnVoiceCapture] StopCapture (current state=%ld)\n",
@@ -170,26 +157,25 @@ STDMETHODIMP COnVoiceCapture::StopCapture()
         if (SUCCEEDED(hr))
         {
             printf("[COnVoiceCapture] ✅ AudioCaptureEngine Stop() 성공\n");
-            // 내부 캡처 스레드가 완전히 종료될 때까지 대기 (AudioCaptureTest 참고)
             Sleep(200);
         }
         else
         {
             printf("[COnVoiceCapture] ⚠️  AudioCaptureEngine Stop() 실패 (HR=0x%08X)\n", hr);
-            printf("[COnVoiceCapture] 가능한 원인: 내부 스레드 종료 중 문제 발생\n");
         }
     }
     else
     {
-        printf("[COnVoiceCapture] 엔진 없음 (중지할 것이 없음)\n");
+        printf("[COnVoiceCapture] 엔진 없음\n");
     }
+
+    // ⭐ GIT 정리는 하지 않음!
+    // 소멸자에서도 하지 않음 - COM 런타임이 자동 정리
+    // m_gitSinks.clear();  ← 절대 호출하지 않음!
 
     m_state = CaptureState::Stopped;
     m_targetPid = 0;
-    printf("[COnVoiceCapture] state = Stopped\n");
-
-    // 이벤트 싱크용 GIT 포인터 정리
-    m_gitSinks.clear();
+    printf("[COnVoiceCapture] state = Stopped (GIT auto cleanup)\n");
 
     return hr;
 }
@@ -220,7 +206,6 @@ STDMETHODIMP COnVoiceCapture::FindChromeProcess(LONG* pPid)
     if (pid == 0)
     {
         printf("[COnVoiceCapture] ⚠️  Chrome 프로세스를 찾지 못했습니다.\n");
-        printf("[COnVoiceCapture] 가능한 원인: Chrome이 실행 중이 아닙니다.\n");
     }
     else
     {
@@ -238,13 +223,12 @@ STDMETHODIMP COnVoiceCapture::FindDiscordProcess(LONG* pPid)
 
     printf("[COnVoiceCapture] FindDiscordProcess 호출\n");
 
-    DWORD pid = ::FindDiscordProcess();  // ✅ 전역 네임스페이스 명시
+    DWORD pid = ::FindDiscordProcess();
     *pPid = static_cast<LONG>(pid);
 
     if (pid == 0)
     {
         printf("[COnVoiceCapture] ⚠️  Discord 프로세스를 찾지 못했습니다.\n");
-        printf("[COnVoiceCapture] 가능한 원인: Discord가 실행 중이 아닙니다.\n");
     }
     else
     {
@@ -260,33 +244,49 @@ STDMETHODIMP COnVoiceCapture::FindDiscordProcess(LONG* pPid)
 // ========================================
 void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
 {
-    printf("[COnVoiceCapture] OnAudioData (size=%u bytes)\n", dataSize);
+    // 너무 많은 로그 방지 (처음 10개만)
+    static int callCount = 0;
+    if (callCount < 10)
+    {
+        printf("[COnVoiceCapture] OnAudioData (size=%u bytes) [#%d]\n", dataSize, callCount);
+        callCount++;
+    }
 
     HRESULT hrEvent = Fire_OnAudioData(pData, dataSize);
-    if (SUCCEEDED(hrEvent))
+
+    if (callCount <= 10)
     {
-        printf("[COnVoiceCapture] Fire_OnAudioData OK\n");
-    }
-    else
-    {
-        printf("[COnVoiceCapture] Fire_OnAudioData FAILED (HR=0x%08X)\n", hrEvent);
+        if (SUCCEEDED(hrEvent))
+        {
+            printf("[COnVoiceCapture] Fire_OnAudioData OK\n");
+        }
+        else
+        {
+            printf("[COnVoiceCapture] Fire_OnAudioData FAILED (HR=0x%08X)\n", hrEvent);
+        }
     }
 }
 
 // ========================================
 // 이벤트 헬퍼
 //  - PCM → SAFEARRAY(VT_UI1) → OnAudioData(Byte[]) 호출
-//  - 오디오 스레드(MTA) 에서 호출되며, GIT 프록시를 통해
-//    스크립트 쪽 아파트먼트로 마샬링됨
 // ========================================
 HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
 {
     if (!pData || dataSize == 0)
         return S_OK;
 
-    DWORD currentTid = GetCurrentThreadId();
-    printf("[COnVoiceCapture] Fire_OnAudioData enter (size=%u, ownerTid=%lu, currentTid=%lu)\n",
-        dataSize, m_ownerThreadId, currentTid);
+    // 디버그 로그 (처음 10개만)
+    static int fireCount = 0;
+    bool shouldLog = (fireCount < 10);
+
+    if (shouldLog)
+    {
+        DWORD currentTid = GetCurrentThreadId();
+        printf("[COnVoiceCapture] Fire_OnAudioData enter (size=%u, ownerTid=%lu, currentTid=%lu) [#%d]\n",
+            dataSize, m_ownerThreadId, currentTid, fireCount);
+        fireCount++;
+    }
 
     // SAFEARRAY(VT_UI1) 생성
     SAFEARRAYBOUND sab;
@@ -296,7 +296,7 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
     SAFEARRAY* psa = SafeArrayCreate(VT_UI1, 1, &sab);
     if (!psa)
     {
-        printf("[COnVoiceCapture] SafeArrayCreate failed\n");
+        printf("[COnVoiceCapture] ❌ SafeArrayCreate failed\n");
         return E_OUTOFMEMORY;
     }
 
@@ -304,7 +304,7 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
     HRESULT hr = SafeArrayAccessData(psa, reinterpret_cast<void**>(&pArrayData));
     if (FAILED(hr))
     {
-        printf("[COnVoiceCapture] SafeArrayAccessData failed (HR=0x%08X)\n", hr);
+        printf("[COnVoiceCapture] ❌ SafeArrayAccessData failed (HR=0x%08X)\n", hr);
         SafeArrayDestroy(psa);
         return hr;
     }
@@ -317,10 +317,14 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
     varAudio.vt = VT_ARRAY | VT_UI1;
     varAudio.parray = psa;
 
-    const DISPID dispidOnAudioData = 1;   // IDL에서 [id(1)] OnAudioData(Byte[] data)
+    const DISPID dispidOnAudioData = 1;
 
     const int nConnections = static_cast<int>(m_gitSinks.size());
-    printf("[COnVoiceCapture] Fire_OnAudioData: nConnections=%d\n", nConnections);
+
+    if (shouldLog)
+    {
+        printf("[COnVoiceCapture] Fire_OnAudioData: nConnections=%d\n", nConnections);
+    }
 
     HRESULT hrAll = S_OK;
 
@@ -330,8 +334,12 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
 
         // 🔥 GIT에서 이 스레드에서 사용할 IDispatch 프록시 꺼내기
         HRESULT hrGit = m_gitSinks[i].CopyTo(&spDispatch);
-        printf("  [conn %d] GIT CopyTo HR=0x%08X, IDispatch*=%p\n",
-            i, hrGit, (IDispatch*)spDispatch);
+
+        if (shouldLog)
+        {
+            printf("  [conn %d] GIT CopyTo HR=0x%08X, IDispatch*=%p\n",
+                i, hrGit, (IDispatch*)spDispatch);
+        }
 
         if (FAILED(hrGit) || !spDispatch)
             continue;
@@ -354,13 +362,16 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
             &argErr
         );
 
-        printf("  [conn %d] Invoke HR=0x%08X, argErr=%u\n", i, hrInvoke, argErr);
+        if (shouldLog)
+        {
+            printf("  [conn %d] Invoke HR=0x%08X, argErr=%u\n", i, hrInvoke, argErr);
+        }
 
         if (FAILED(hrInvoke))
         {
             if (ex.bstrSource || ex.bstrDescription)
             {
-                wprintf(L"  [conn %d] EXCEP Source=%s, Desc=%s\n",
+                wprintf(L"  [conn %d] ❌ EXCEP Source=%s, Desc=%s\n",
                     i,
                     ex.bstrSource ? ex.bstrSource : L"(null)",
                     ex.bstrDescription ? ex.bstrDescription : L"(null)");
@@ -368,7 +379,7 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
         }
 
         if (ex.bstrSource)    SysFreeString(ex.bstrSource);
-        if (ex.bstrDescription)SysFreeString(ex.bstrDescription);
+        if (ex.bstrDescription) SysFreeString(ex.bstrDescription);
         if (ex.bstrHelpFile)  SysFreeString(ex.bstrHelpFile);
 
         if (FAILED(hrInvoke) && SUCCEEDED(hrAll))
@@ -377,9 +388,12 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
         }
     }
 
-    // VariantClear 가 SAFEARRAY까지 함께 해제해줌
     VariantClear(&varAudio);
 
-    printf("[COnVoiceCapture] Fire_OnAudioData leave (HR=0x%08X)\n", hrAll);
+    if (shouldLog)
+    {
+        printf("[COnVoiceCapture] Fire_OnAudioData leave (HR=0x%08X)\n", hrAll);
+    }
+
     return hrAll;
 }

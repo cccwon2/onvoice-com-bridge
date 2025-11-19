@@ -111,6 +111,12 @@ EXTERN_C const IID IID_IOnVoiceCapture;
         virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE GetCaptureState( 
             /* [retval][out] */ LONG *pState) = 0;
         
+        virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE FindChromeProcess( 
+            /* [retval][out] */ LONG *pPid) = 0;
+        
+        virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE FindDiscordProcess( 
+            /* [retval][out] */ LONG *pPid) = 0;
+        
     };
     
     
@@ -190,6 +196,16 @@ EXTERN_C const IID IID_IOnVoiceCapture;
             IOnVoiceCapture * This,
             /* [retval][out] */ LONG *pState);
         
+        DECLSPEC_XFGVIRT(IOnVoiceCapture, FindChromeProcess)
+        /* [helpstring][id] */ HRESULT ( STDMETHODCALLTYPE *FindChromeProcess )( 
+            IOnVoiceCapture * This,
+            /* [retval][out] */ LONG *pPid);
+        
+        DECLSPEC_XFGVIRT(IOnVoiceCapture, FindDiscordProcess)
+        /* [helpstring][id] */ HRESULT ( STDMETHODCALLTYPE *FindDiscordProcess )( 
+            IOnVoiceCapture * This,
+            /* [retval][out] */ LONG *pPid);
+        
         END_INTERFACE
     } IOnVoiceCaptureVtbl;
 
@@ -234,6 +250,12 @@ EXTERN_C const IID IID_IOnVoiceCapture;
 
 #define IOnVoiceCapture_GetCaptureState(This,pState)	\
     ( (This)->lpVtbl -> GetCaptureState(This,pState) ) 
+
+#define IOnVoiceCapture_FindChromeProcess(This,pPid)	\
+    ( (This)->lpVtbl -> FindChromeProcess(This,pPid) ) 
+
+#define IOnVoiceCapture_FindDiscordProcess(This,pPid)	\
+    ( (This)->lpVtbl -> FindDiscordProcess(This,pPid) ) 
 
 #endif /* COBJMACROS */
 

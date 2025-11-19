@@ -20,9 +20,9 @@ using namespace ATL;
 // ========================================
 enum class CaptureState : LONG
 {
-    Stopped = 0,  // 중지
+    Stopped = 0,   // 중지
     Starting = 1,  // 시작 중
-    Capturing = 2,  // 캡처 중
+    Capturing = 2, // 캡처 중
     Stopping = 3   // 중지 중
 };
 
@@ -111,15 +111,15 @@ private:
     // ========================================
     // 멤버 변수
     // ========================================
-    AudioCaptureEngine* m_pEngine;       // PID 기반 엔진
-    CaptureState                            m_state;         // 현재 상태
-    LONG                                    m_targetPid;     // 타깃 PID
-    DWORD                                   m_ownerThreadId; // 객체 생성 스레드 ID
+    AudioCaptureEngine* m_pEngine;              // PID 기반 엔진
+    CaptureState m_state;                       // 현재 상태
+    LONG m_targetPid;                           // 타깃 PID
+    DWORD m_ownerThreadId;                      // 객체 생성 스레드 ID
 
     // 🔥 VBScript/JS 이벤트 싱크를 스레드 간 안전하게 호출하기 위한 GIT 프록시들
     //  - StartCapture할 때 m_vec 에 연결된 sink들을 GIT에 등록
     //  - 오디오 캡처 스레드에서는 GIT에서 CopyTo() 해서 Invoke 호출
-    std::vector<CComGITPtr<IDispatch>>      m_gitSinks;
+    std::vector<CComGITPtr<IDispatch>> m_gitSinks;
 };
 
 OBJECT_ENTRY_AUTO(__uuidof(OnVoiceCapture), COnVoiceCapture)
