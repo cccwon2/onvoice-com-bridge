@@ -4,21 +4,8 @@
 #include <stdio.h>
 #include <objbase.h>
 
-DWORD WINAPI AudioCaptureEngine::StopThreadProc(LPVOID param)
-{
-    AudioCaptureEngine* self = static_cast<AudioCaptureEngine*>(param);
-    if (!self)
-        return 0;
-
-    self->StopInternal();
-    ::InterlockedExchange(&self->m_stopThreadFlag, 0);
-    return 0;
-}
-
 AudioCaptureEngine::AudioCaptureEngine()
     : m_pCallback(nullptr)
-    , m_hStopThread(nullptr)
-    , m_stopThreadFlag(0)
 {
     printf("[Engine] AudioCaptureEngine (PID 기반) 생성\n");
 }
@@ -27,18 +14,16 @@ AudioCaptureEngine::~AudioCaptureEngine()
 {
     printf("[Engine] AudioCaptureEngine 소멸자 시작\n");
 
-    // 이미 Stop 스레드가 돌고 있으면 먼저 기다린다.
-    if (m_hStopThread)
+    // 가능하면 여기서도 동일 스레드에서 정리되겠지만,
+    // 규칙 상 "StartCapture와 같은 스레드"에서만 Stop을 호출해야 하므로
+    // 너무 공격적으로 Stop() 을 세게 부르지는 않고,
+    // 상태만 보고 필요할 때만 시도하는 정도로 둔다.
+    eCaptureState state = m_capture.GetState();
+    if (state != eCaptureState::READY)
     {
-        printf("[Engine] 소멸자: Stop 스레드 대기 중...\n");
-        DWORD dw = WaitForSingleObject(m_hStopThread, 5000);
-        printf("[Engine] 소멸자: Stop 스레드 wait 결과=0x%08X\n", dw);
-        CloseHandle(m_hStopThread);
-        m_hStopThread = nullptr;
+        printf("[Engine] 소멸자: 캡처가 아직 진행 중 → Stop() 시도\n");
+        Stop();
     }
-
-    // 아직 READY 상태가 아니라면 내부적으로 한 번 더 정리 시도
-    StopInternal();
 
     printf("[Engine] AudioCaptureEngine 소멸자 끝\n");
 }
@@ -104,8 +89,8 @@ HRESULT AudioCaptureEngine::Start(DWORD pid, IAudioDataCallback* pCallback)
 
     printf("[Engine] ✅ SetCallback 성공\n");
 
-    // ⭐ 중간 스레드 기본값 사용 (PoC와 동일)
-    printf("[Engine] ✅ IntermediateThread 기본값 사용\n");
+    // ⭐ 기본값: IntermediateThread / Queue 비활성 (라이브러리 기본 설정)
+    printf("[Engine] ✅ IntermediateThread 기본값 사용 (QUEUE 미사용)\n");
 
     // 4) 캡처 시작
     printf("[Engine] StartCapture 호출 중...\n");
@@ -130,8 +115,6 @@ HRESULT AudioCaptureEngine::Start(DWORD pid, IAudioDataCallback* pCallback)
     return S_OK;
 }
 
-// COM(COnVoiceCapture)에서 부르는 Stop()
-// → 가능한 한 빨리 리턴하고, 내부 스레드에서 StopInternal() 실행
 HRESULT AudioCaptureEngine::Stop()
 {
     eCaptureState state = m_capture.GetState();
@@ -143,53 +126,7 @@ HRESULT AudioCaptureEngine::Stop()
         return S_OK;
     }
 
-    // 이미 Stop 스레드가 돌고 있다면 추가 요청은 무시
-    LONG oldFlag = ::InterlockedCompareExchange(&m_stopThreadFlag, 1, 0);
-    if (oldFlag != 0) {
-        printf("[Engine] Stop() 이미 실행 중 (중복 호출 무시)\n");
-        return S_OK;
-    }
-
-    // 이전 Stop 스레드 핸들이 남아 있으면 정리
-    if (m_hStopThread) {
-        CloseHandle(m_hStopThread);
-        m_hStopThread = nullptr;
-    }
-
-    HANDLE hThread = ::CreateThread(
-        nullptr,
-        0,
-        &AudioCaptureEngine::StopThreadProc,
-        this,
-        0,
-        nullptr
-    );
-
-    if (!hThread)
-    {
-        DWORD err = GetLastError();
-        printf("[Engine] ❌ Stop() 스레드 생성 실패 (err=%lu), 동기 StopInternal() 수행\n", err);
-        ::InterlockedExchange(&m_stopThreadFlag, 0);
-        return StopInternal();
-    }
-
-    m_hStopThread = hThread;
-
-    printf("[Engine] Stop() 비동기 요청 완료\n");
-    return S_OK;
-}
-
-HRESULT AudioCaptureEngine::StopInternal()
-{
-    eCaptureState state = m_capture.GetState();
-    printf("[Engine] StopInternal() 실행 (state=%d)\n", (int)state);
-
-    if (state == eCaptureState::READY) {
-        printf("[Engine] StopInternal: 이미 READY 상태 (중지됨)\n");
-        m_pCallback = nullptr;
-        return S_OK;
-    }
-
+    // ⭐ 반드시 StartCapture 를 호출한 "같은 스레드"에서 호출해야 함
     eCaptureError err = m_capture.StopCapture();
     if (err != eCaptureError::NONE) {
         HRESULT hrLast = m_capture.GetLastErrorResult();
@@ -199,8 +136,7 @@ HRESULT AudioCaptureEngine::StopInternal()
         return (hrLast != S_OK) ? hrLast : E_FAIL;
     }
 
-    // 라이브러리가 내부 스레드를 정리할 시간을 약간 준다
-    Sleep(200);
+    Sleep(200); // 내부 쓰레드 / 버퍼 정리 약간 대기
 
     m_pCallback = nullptr;
     printf("[Engine] ✅ StopCapture 성공, 상태 READY\n");

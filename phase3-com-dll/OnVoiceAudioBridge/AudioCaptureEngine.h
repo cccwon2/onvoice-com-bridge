@@ -26,8 +26,7 @@ public:
     // 특정 PID 프로세스의 오디오 캡처 시작
     HRESULT Start(DWORD pid, IAudioDataCallback* pCallback);
 
-    // 캡처 중지 (COM에서 호출하는 외부 API)
-    //  - 내부에서는 별도 스레드에서 StopInternal() 을 실행
+    // 캡처 중지 (StartCapture를 호출한 같은 스레드에서 호출해야 함)
     HRESULT Stop();
 
     // 현재 캡처 중인지 여부
@@ -48,16 +47,7 @@ private:
         const std::vector<unsigned char>::iterator& begin,
         const std::vector<unsigned char>::iterator& end);
 
-    // Stop 전용 워커 스레드 엔트리
-    static DWORD WINAPI StopThreadProc(LPVOID param);
-
-    // 실제 동기 Stop 로직 (StopCapture 호출)
-    HRESULT StopInternal();
-
 private:
     ProcessLoopbackCapture m_capture;   // PID 기반 캡처 엔진
     IAudioDataCallback* m_pCallback; // COnVoiceCapture 의 콜백 (OnAudioData)
-
-    HANDLE                 m_hStopThread;    // Stop 전용 스레드 핸들
-    volatile LONG          m_stopThreadFlag; // 0=없음, 1=실행 중
 };

@@ -255,31 +255,20 @@ STDMETHODIMP COnVoiceCapture::FindDiscordProcess(LONG* pPid)
 // ========================================
 void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
 {
-    if (!pData || dataSize == 0)
-        return;
-
-    // 너무 많은 로그 방지 (처음 10개만)
-    static int callCount = 0;
-    if (callCount < 10)
-    {
-        printf("[COnVoiceCapture] OnAudioData (size=%u bytes) [#%d]\n", dataSize, callCount);
-        callCount++;
-    }
+    printf("[COnVoiceCapture] OnAudioData (size=%u bytes)\n", dataSize);
 
     HRESULT hrEvent = Fire_OnAudioData(pData, dataSize);
 
-    if (callCount <= 10)
+    if (FAILED(hrEvent))
     {
-        if (SUCCEEDED(hrEvent))
-        {
-            printf("[COnVoiceCapture] Fire_OnAudioData OK\n");
-        }
-        else
-        {
-            printf("[COnVoiceCapture] Fire_OnAudioData FAILED (HR=0x%08X)\n", hrEvent);
-        }
+        printf("[COnVoiceCapture] Fire_OnAudioData FAILED (HR=0x%08X)\n", hrEvent);
+    }
+    else
+    {
+        printf("[COnVoiceCapture] Fire_OnAudioData OK\n");
     }
 }
+
 
 // ========================================
 // 이벤트 헬퍼
