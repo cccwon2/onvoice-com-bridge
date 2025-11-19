@@ -3,25 +3,25 @@
 #include "pch.h"
 #include "OnVoiceCapture.h"
 #include "ProcessHelper.h"
+
 #include <stdio.h>
 #include <atlcomcli.h>
 #include <OleAuto.h>
 
 // ========================================
-// 소멸자: AudioCaptureEngine 정리
-// ⭐ GIT 정리 완전 제거 - COM 런타임이 자동 정리
+// 소멸자: AudioCaptureEngine / GIT 정리
 // ========================================
 COnVoiceCapture::~COnVoiceCapture()
 {
     printf("[COnVoiceCapture] Destructor start\n");
 
-    // ⭐ GIT 포인터는 절대 건드리지 않음!
-    // CComGITPtr의 소멸자가 자동으로 Revoke()를 호출
-    // 명시적으로 clear()하면 Assertion 발생
+    // GIT에 등록된 이벤트 싱크 정리
     if (!m_gitSinks.empty())
     {
-        printf("[COnVoiceCapture] GIT sinks will be auto-cleaned by COM runtime (count=%zu)\n",
+        printf("[COnVoiceCapture] Clearing GIT sinks (count=%zu)\n",
             m_gitSinks.size());
+        // 각 CComGITPtr<IDispatch>의 소멸자가 Revoke()를 호출함
+        m_gitSinks.clear();
     }
 
     if (m_pEngine)
@@ -91,24 +91,31 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
     m_gitSinks.clear();
     {
         const int nConnections = m_vec.GetSize();
-        printf("[COnVoiceCapture] Preparing GIT sinks, nConnections=%d\n", nConnections);
-        m_gitSinks.resize(nConnections);
+        printf("[COnVoiceCapture] Preparing GIT sinks, raw connections=%d\n", nConnections);
 
         for (int i = 0; i < nConnections; ++i)
         {
             IUnknown* pUnk = m_vec.GetAt(i);
-            printf("  [GIT prep %d] IUnknown*=%p\n", i, pUnk);
+            printf("  [GIT prep src %d] IUnknown*=%p\n", i, pUnk);
             if (!pUnk)
                 continue;
 
             CComQIPtr<IDispatch> spDisp(pUnk);
-            printf("  [GIT prep %d] IDispatch*=%p\n", i, (IDispatch*)spDisp);
+            printf("  [GIT prep src %d] IDispatch*=%p\n", i, (IDispatch*)spDisp);
             if (!spDisp)
                 continue;
 
-            HRESULT hrGit = m_gitSinks[i].Attach(spDisp);
-            printf("  [GIT prep %d] Attach HR=0x%08X\n", i, hrGit);
+            CComGITPtr<IDispatch> git;
+            HRESULT hrGit = git.Attach(spDisp);
+            printf("  [GIT prep src %d] Attach HR=0x%08X\n", i, hrGit);
+
+            if (SUCCEEDED(hrGit))
+            {
+                m_gitSinks.push_back(git);  // ✅ Attach 성공한 것만 저장
+            }
         }
+
+        printf("[COnVoiceCapture] GIT sink count=%zu\n", m_gitSinks.size());
     }
 
     m_targetPid = processId;
@@ -128,13 +135,13 @@ STDMETHODIMP COnVoiceCapture::StartCapture(LONG processId)
         printf("[COnVoiceCapture] ❌ StartCapture 실패 (HR=0x%08X) -> state = Stopped\n", hr);
         m_state = CaptureState::Stopped;
         m_targetPid = 0;
-        m_gitSinks.clear();
+        m_gitSinks.clear();  // 실패 시 GIT도 정리
     }
 
     return hr;
 }
 
-// 캡처 중지 ⭐ 수정됨
+// 캡처 중지
 STDMETHODIMP COnVoiceCapture::StopCapture()
 {
     printf("[COnVoiceCapture] StopCapture (current state=%ld)\n",
@@ -169,13 +176,17 @@ STDMETHODIMP COnVoiceCapture::StopCapture()
         printf("[COnVoiceCapture] 엔진 없음\n");
     }
 
-    // ⭐ GIT 정리는 하지 않음!
-    // 소멸자에서도 하지 않음 - COM 런타임이 자동 정리
-    // m_gitSinks.clear();  ← 절대 호출하지 않음!
+    // GIT 싱크 정리
+    if (!m_gitSinks.empty())
+    {
+        printf("[COnVoiceCapture] Clearing GIT sinks on StopCapture (count=%zu)\n",
+            m_gitSinks.size());
+        m_gitSinks.clear();
+    }
 
     m_state = CaptureState::Stopped;
     m_targetPid = 0;
-    printf("[COnVoiceCapture] state = Stopped (GIT auto cleanup)\n");
+    printf("[COnVoiceCapture] state = Stopped\n");
 
     return hr;
 }
@@ -244,6 +255,9 @@ STDMETHODIMP COnVoiceCapture::FindDiscordProcess(LONG* pPid)
 // ========================================
 void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
 {
+    if (!pData || dataSize == 0)
+        return;
+
     // 너무 많은 로그 방지 (처음 10개만)
     static int callCount = 0;
     if (callCount < 10)
@@ -332,7 +346,7 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
     {
         CComPtr<IDispatch> spDispatch;
 
-        // 🔥 GIT에서 이 스레드에서 사용할 IDispatch 프록시 꺼내기
+        // GIT에서 이 스레드에서 사용할 IDispatch 프록시 꺼내기
         HRESULT hrGit = m_gitSinks[i].CopyTo(&spDispatch);
 
         if (shouldLog)
@@ -388,7 +402,7 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
         }
     }
 
-    VariantClear(&varAudio);
+    VariantClear(&varAudio);   // SAFEARRAY도 같이 해제됨
 
     if (shouldLog)
     {
