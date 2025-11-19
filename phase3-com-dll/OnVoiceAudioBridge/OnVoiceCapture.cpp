@@ -287,6 +287,10 @@ void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
 // ========================================
 HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
 {
+    // 캡처 중이 아닐 때 들어오는 late callback은 그냥 무시
+    if (m_state != CaptureState::Capturing)
+        return S_OK;
+
     if (!pData || dataSize == 0)
         return S_OK;
 
