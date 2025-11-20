@@ -256,6 +256,10 @@ STDMETHODIMP COnVoiceCapture::FindDiscordProcess(LONG* pPid)
 // ========================================
 void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
 {
+    // Stop 중이면 로그도 찍지 않고 즉시 리턴 (깔끔한 로그를 위해)
+    if (m_state != CaptureState::Capturing)
+        return;
+
     printf("[COnVoiceCapture] OnAudioData (size=%u bytes)\n", dataSize);
 
     HRESULT hrEvent = Fire_OnAudioData(pData, dataSize);
@@ -266,7 +270,8 @@ void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
     }
     else
     {
-        printf("[COnVoiceCapture] Fire_OnAudioData OK\n");
+        // 성공 로그는 너무 많으니 주석 처리
+        //printf("[COnVoiceCapture] Fire_OnAudioData OK\n");
     }
 }
 
