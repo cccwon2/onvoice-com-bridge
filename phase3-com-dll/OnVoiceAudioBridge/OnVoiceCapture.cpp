@@ -149,38 +149,39 @@ STDMETHODIMP COnVoiceCapture::StopCapture()
 
     if (m_state == CaptureState::Stopped || m_state == CaptureState::Stopping)
     {
-        printf("[COnVoiceCapture] already stopped/stopping\n");
         return S_OK;
     }
 
+    // 1. 상태를 먼저 변경하여 오디오 스레드가 이벤트를 더 이상 보내지 않게 함
     m_state = CaptureState::Stopping;
     printf("[COnVoiceCapture] state = Stopping\n");
+
+    // 2. [중요] 데드락 방지: 잠시 대기하여 오디오 스레드가 현재 처리 중인 Invoke를 끝내도록 함
+    // (완벽한 해결책은 아니지만 PoC 단계에서는 이 정도로 충분합니다)
+    Sleep(50);
 
     HRESULT hr = S_OK;
 
     if (m_pEngine)
     {
+        // 3. 엔진 정지 (스레드 Join)
+        // 이제 오디오 스레드는 Fire_OnAudioData 진입 시 m_state 체크에서 튕겨 나가므로
+        // 메인 스레드를 기다리지 않고 바로 종료됩니다.
         hr = m_pEngine->Stop();
+
         if (SUCCEEDED(hr))
         {
             printf("[COnVoiceCapture] ✅ AudioCaptureEngine Stop() 성공\n");
-            Sleep(200);
         }
         else
         {
-            printf("[COnVoiceCapture] ⚠️  AudioCaptureEngine Stop() 실패 (HR=0x%08X)\n", hr);
+            printf("[COnVoiceCapture] ⚠️ AudioCaptureEngine Stop() 실패 (HR=0x%08X)\n", hr);
         }
     }
-    else
-    {
-        printf("[COnVoiceCapture] 엔진 없음\n");
-    }
 
-    // GIT 싱크 정리
+    // 4. GIT 싱크 정리
     if (!m_gitSinks.empty())
     {
-        printf("[COnVoiceCapture] Clearing GIT sinks on StopCapture (count=%zu)\n",
-            m_gitSinks.size());
         m_gitSinks.clear();
     }
 
@@ -276,7 +277,7 @@ void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
 // ========================================
 HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
 {
-    // 캡처 중이 아닐 때 들어오는 late callback은 그냥 무시
+    // 캡처 중이 아니면 즉시 리턴 (데드락 방지 핵심)
     if (m_state != CaptureState::Capturing)
         return S_OK;
 
