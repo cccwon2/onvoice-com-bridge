@@ -2,8 +2,8 @@
 
 OnVoice COM 브리지 개발 기능 중심 진행 상황
 
-**마지막 업데이트**: 2025-11-18  
-**현재 상태**: 핵심 기능 완료 ✅ → Electron 연동 준비 중
+**마지막 업데이트**: 2025-11-20  
+**현재 상태**: 핵심 기능 완료 ✅ + E2E 테스트 성공 🎉 → Electron 연동 준비 중
 
 ---
 
@@ -147,13 +147,15 @@ spDispatch->Invoke(dispidOnAudioData, ...);
 ### 5. 테스트 및 검증 ✅
 
 **구현 상태**: 완료  
-**완료 날짜**: 2025-11-18
+**완료 날짜**: 2025-11-18  
+**E2E 테스트 완료**: 2025-11-20 🎉
 
 **테스트 스크립트**:
 
 - ✅ `TestOnVoiceEvents.vbs` - 이벤트 수신 테스트
 - ✅ `TestPidCapture.vbs` - PID 기반 캡처 테스트
 - ✅ `TestAudioCaptureEngine.vbs` - 엔진 연동 테스트
+- ✅ `TestCaptureToWav.vbs` - WAV 파일 저장 E2E 테스트 🎉 신규!
 
 **검증 결과**:
 
@@ -164,6 +166,16 @@ spDispatch->Invoke(dispidOnAudioData, ...);
 ✅ 16kHz mono PCM 데이터 실시간 전송 확인
 ✅ 상태 전환 확인 (Stopped → Starting → Capturing → Stopping → Stopped)
 ✅ 모든 테스트 통과!
+```
+
+**E2E 테스트 결과 (2025-11-20)**:
+
+```
+✅ 945개의 오디오 청크 수집 성공
+✅ 총 데이터 크기: 323,190 bytes
+✅ StopCapture 정상 작동
+✅ WAV 파일 저장 완료: capture_Chrome_2025-11-20_오후_25001.wav
+✅ 전체 E2E 테스트 통과! 🎉
 ```
 
 ---
@@ -254,11 +266,12 @@ spDispatch->Invoke(dispidOnAudioData, ...);
 | COM 인터페이스 완성 | ✅ 완료 | 2025-11-18 | IOnVoiceCapture    |
 | 이벤트 시스템 완성  | ✅ 완료 | 2025-11-18 | IConnectionPoint   |
 | 캡처 엔진 통합 완성 | ✅ 완료 | 2025-11-18 | AudioCaptureEngine |
+| **E2E 테스트 성공** | ✅ **완료** | **2025-11-20** | **WAV 파일 저장** 🎉 |
 | Electron 연동       | 📅 예정 | 2025-11-19 | winax              |
 | MVP 완성            | 📅 예정 | 2025-12-04 | E2E 테스트         |
 
 ---
 
-**마지막 업데이트**: 2025-11-18  
+**마지막 업데이트**: 2025-11-20  
 **현재 포커스**: Electron 연동 준비  
 **다음 마일스톤**: Electron Main 프로세스 연동

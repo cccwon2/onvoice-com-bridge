@@ -3,6 +3,7 @@
 OnVoiceAudioBridge 테스트 스크립트 및 검증 결과
 
 **완료 날짜**: 2025-11-18  
+**E2E 테스트 완료**: 2025-11-20 🎉  
 **상태**: ✅ 완료
 
 ---
@@ -107,6 +108,39 @@ cscript //nologo TestAudioCaptureEngine.vbs
 
 ---
 
+### 4. TestCaptureToWav.vbs 🎉 신규!
+
+**목적**: WAV 파일 저장 E2E 테스트
+
+**주요 테스트 항목**:
+- ✅ COM 객체 생성 (이벤트 prefix 포함)
+- ✅ 오디오 데이터 수집 (10초간)
+- ✅ 총 청크 수 및 데이터 크기 확인
+- ✅ StopCapture 호출
+- ✅ WAV 파일 저장 및 검증
+
+**사용법**:
+```powershell
+cd phase3-com-dll\OnVoiceAudioBridge\x64\Debug
+cscript //nologo TestCaptureToWav.vbs [PID]
+```
+
+**테스트 결과 (2025-11-20)**:
+```
+✅ 캡처 완료! 총 945 개의 오디오 청크 수집됨
+✅ 총 데이터 크기: 323,190 bytes
+✅ StopCapture 완료 (HR=0)
+✅ WAV 파일 저장 완료: capture_Chrome_2025-11-20_오후_25001.wav
+✅ 테스트는 성공적으로 끝났어.
+```
+
+**특징**:
+- 실제 오디오 재생 테스트 가능
+- WAV 파일로 저장하여 재생 검증 가능
+- 전체 E2E 테스트 시나리오 완성
+
+---
+
 ## ✅ 검증 결과
 
 ### COM 인터페이스 검증
@@ -138,6 +172,15 @@ cscript //nologo TestAudioCaptureEngine.vbs
 ✅ 프로세스 격리 확인 (다른 앱 오디오 무시)
 ✅ 16kHz mono PCM 형식 확인
 ✅ 실시간 스트리밍 정상 작동
+```
+
+### E2E 테스트 검증 (2025-11-20) 🎉
+
+```
+✅ 945개의 오디오 청크 수집 성공
+✅ 총 데이터 크기: 323,190 bytes (약 10초 @ 16kHz mono)
+✅ WAV 파일 저장 및 재생 검증 완료
+✅ 전체 E2E 테스트 통과!
 ```
 
 ### 상태 전환 검증
@@ -191,6 +234,23 @@ cscript //nologo TestAudioCaptureEngine.vbs
 
 ---
 
+### 시나리오 4: WAV 파일 저장 E2E 테스트 🎉 신규!
+
+1. Chrome 실행
+2. `TestCaptureToWav.vbs` 실행
+3. Chrome PID 입력
+4. YouTube에서 동영상 재생
+5. 10초 대기 (오디오 수집)
+6. WAV 파일 저장 확인
+7. Windows Media Player로 재생 검증
+
+**실제 결과 (2025-11-20)**: ✅ 성공!
+- 945개 청크 수집
+- 323,190 bytes 데이터
+- WAV 파일 저장 완료
+
+---
+
 ## 🐛 알려진 이슈
 
 ### 1. COM 등록 필요
@@ -221,6 +281,12 @@ regsvr32 OnVoiceAudioBridge.dll
 - **채널**: Mono
 - **청크 크기**: 약 3200 bytes (100ms)
 - **전송 빈도**: 약 10회/초
+
+**실제 테스트 결과 (2025-11-20)**:
+- **10초 캡처**: 945개 청크
+- **총 데이터**: 323,190 bytes
+- **평균 청크 크기**: 약 342 bytes
+- **실제 전송 빈도**: 약 94.5회/초
 
 ### 지연 시간
 

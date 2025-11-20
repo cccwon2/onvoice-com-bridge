@@ -2,8 +2,8 @@
 
 OnVoice COM 브리지 개발 핵심 개념 빠른 참조
 
-**마지막 업데이트**: 2025-11-18 (Week 1 완료)  
-**상태**: Week 1 완료 ✅ → Week 2 준비 중
+**마지막 업데이트**: 2025-11-20 (E2E 테스트 성공)  
+**상태**: Week 1 완료 ✅ + E2E 테스트 성공 🎉 → Week 2 준비 중
 
 ---
 
@@ -515,6 +515,16 @@ C:\Windows\System32\cscript.exe //nologo TestOnVoiceCapture.vbs
 ✅ OnVoice_OnAudioData 이벤트 수신 성공
 ✅ 16kHz mono PCM 데이터 실시간 전송 확인
 ✅ 상태 전환: Stopped → Starting → Capturing → Stopping → Stopped
+```
+
+**E2E 테스트 결과 (2025-11-20)** 🎉:
+
+```
+✅ 945개의 오디오 청크 수집 성공
+✅ 총 데이터 크기: 323,190 bytes
+✅ StopCapture 정상 작동
+✅ WAV 파일 저장 완료: capture_Chrome_2025-11-20_오후_25001.wav
+✅ 전체 E2E 테스트 통과!
 ```
 
 **테스트 스크립트**:
