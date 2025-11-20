@@ -396,12 +396,24 @@ eCaptureError ProcessLoopbackCapture::GetQueueSize(size_t& iSize)
 
 void ProcessLoopbackCapture::Reset()
 {
-    StopThreads();
+    // [기존 코드] StopThreads();  <-- ❌ 여기가 문제 (이 줄을 잘라내세요)
 
+    // 1. 오디오 클라이언트(소스)를 먼저 정지시켜서 이벤트 발생을 막습니다.
     if (m_CaptureState == eCaptureState::CAPTURING)
     {
-        m_pAudioClient->Stop();
+        if (m_pAudioClient) // 안전장치 추가
+            m_pAudioClient->Stop();
     }
+
+    // 2. 대기 중인 스레드를 깨우기 위해 이벤트를 강제로 한 번 쏩니다.
+    // (GetBuffer 루프나 WaitForSingleObject에서 즉시 빠져나오게 함)
+    m_bRunAudioThreads = false; // 플래그 먼저 내림
+    if (m_hSampleReadyEvent != NULL) {
+        SetEvent(m_hSampleReadyEvent);
+    }
+
+    // 3. [이동됨] 이제 안전하게 스레드를 종료(Join)합니다.
+    StopThreads(); // <-- ✅ 여기로 이동
 
     if (m_pAudioCaptureClient != nullptr)
     {

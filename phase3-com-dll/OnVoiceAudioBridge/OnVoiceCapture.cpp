@@ -156,9 +156,9 @@ STDMETHODIMP COnVoiceCapture::StopCapture()
     m_state = CaptureState::Stopping;
     printf("[COnVoiceCapture] state = Stopping\n");
 
-    // 2. [중요] 데드락 방지: 잠시 대기하여 오디오 스레드가 현재 처리 중인 Invoke를 끝내도록 함
-    // (완벽한 해결책은 아니지만 PoC 단계에서는 이 정도로 충분합니다)
-    Sleep(50);
+    // 2. [수정] 대기 시간 증가 (50ms -> 200ms)
+    // VBScript가 마지막 이벤트를 처리하고 루프를 빠져나올 시간을 벌어줍니다.
+    Sleep(200);
 
     HRESULT hr = S_OK;
 

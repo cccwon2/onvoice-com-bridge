@@ -121,24 +121,31 @@ HRESULT AudioCaptureEngine::Stop()
     printf("[Engine] Stop() 호출 (state=%d)\n", (int)state);
 
     if (state == eCaptureState::READY) {
-        printf("[Engine] 이미 READY 상태 (중지됨)\n");
         m_pCallback = nullptr;
         return S_OK;
     }
 
-    // ⭐ 반드시 StartCapture 를 호출한 "같은 스레드"에서 호출해야 함
+    // ⭐ [핵심 수정 1] 콜백 연결을 먼저 끊습니다.
+    // 이제 오디오 스레드는 데이터를 캡처해도 HandleLoopbackData에서 즉시 리턴하게 됩니다.
+    m_pCallback = nullptr;
+
+    // ⭐ [핵심 수정 2] 진행 중인 콜백이 빠져나갈 시간을 줍니다.
+    // 만약 오디오 스레드가 이미 HandleLoopbackData 내부에 진입해 있다면,
+    // 이 Sleep 동안 빠져나올 것입니다. (Join 전에 Main Thread가 잠시 숨을 쉅니다)
+    printf("[Engine] 콜백 차단 및 잔여 작업 대기 (50ms)...\n");
+    Sleep(50);
+
+    // ⭐ [기존 로직] 이제 안전하게 스레드를 종료(Join)합니다.
+    // 더 이상 오디오 스레드가 Main Thread로 Invoke를 날리지 않으므로 데드락이 걸리지 않습니다.
     eCaptureError err = m_capture.StopCapture();
+
     if (err != eCaptureError::NONE) {
         HRESULT hrLast = m_capture.GetLastErrorResult();
-        printf("[Engine] ⚠️  StopCapture 실패: %s (hr=0x%08X)\n",
+        printf("[Engine] ⚠️ StopCapture 실패: %s (hr=0x%08X)\n",
             LoopbackCaptureConst::GetErrorText(err), hrLast);
-        m_pCallback = nullptr;
         return (hrLast != S_OK) ? hrLast : E_FAIL;
     }
 
-    Sleep(200); // 내부 쓰레드 / 버퍼 정리 약간 대기
-
-    m_pCallback = nullptr;
     printf("[Engine] ✅ StopCapture 성공, 상태 READY\n");
     return S_OK;
 }
@@ -169,42 +176,32 @@ void AudioCaptureEngine::HandleLoopbackData(
     const std::vector<unsigned char>::iterator& begin,
     const std::vector<unsigned char>::iterator& end)
 {
-    if (!m_pCallback)
+    // ⭐ [핵심 수정 3] 콜백 포인터가 없으면 즉시 리턴 (Lock-free 안전장치)
+    if (m_pCallback == nullptr)
     {
-        printf("[Engine] ⚠️  HandleLoopbackData: m_pCallback is NULL!\n");
+        // Stop()이 호출된 상태이므로 데이터를 무시합니다.
         return;
     }
 
     const size_t size = static_cast<size_t>(std::distance(begin, end));
 
-    static int callCount = 0;
-    printf("[Engine] HandleLoopbackData: size=%zu bytes [#%d] (state=%d)\n",
-        size, callCount, (int)m_capture.GetState());
-    callCount++;
+    // (로그 노이즈를 줄이기 위해 주석 처리하거나 빈도 조절 가능)
+    // printf("[Engine] HandleLoopbackData: size=%zu bytes\n", size);
 
-    if (size == 0)
-    {
-        printf("[Engine] ⚠️  빈 데이터 (size=0)\n");
-        return;
-    }
+    if (size == 0) return;
 
     // COM 초기화 (스레드별 1회)
     static thread_local bool s_comInitialized = false;
     if (!s_comInitialized)
     {
-        HRESULT hrCo = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        if (SUCCEEDED(hrCo) || hrCo == RPC_E_CHANGED_MODE)
-        {
-            s_comInitialized = true;
-            printf("[Engine] 오디오 스레드 COM 초기화 완료 (TID=%lu)\n", GetCurrentThreadId());
-        }
-        else
-        {
-            printf("[Engine] ❌ COM 초기화 실패 (HR=0x%08X)\n", hrCo);
-            return;
-        }
+        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        s_comInitialized = true;
     }
 
     BYTE* pData = reinterpret_cast<BYTE*>(&(*begin));
-    m_pCallback->OnAudioData(pData, static_cast<UINT32>(size));
+
+    // 한 번 더 체크 (안전 제일)
+    if (m_pCallback) {
+        m_pCallback->OnAudioData(pData, static_cast<UINT32>(size));
+    }
 }
