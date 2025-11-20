@@ -114,6 +114,9 @@ EXTERN_C const IID IID_IOnVoiceCapture;
         virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE FindChromeProcess( 
             /* [retval][out] */ LONG *pPid) = 0;
         
+        virtual /* [id] */ HRESULT STDMETHODCALLTYPE FindEdgeProcess( 
+            /* [retval][out] */ LONG *pPid) = 0;
+        
         virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE FindDiscordProcess( 
             /* [retval][out] */ LONG *pPid) = 0;
         
@@ -201,6 +204,11 @@ EXTERN_C const IID IID_IOnVoiceCapture;
             IOnVoiceCapture * This,
             /* [retval][out] */ LONG *pPid);
         
+        DECLSPEC_XFGVIRT(IOnVoiceCapture, FindEdgeProcess)
+        /* [id] */ HRESULT ( STDMETHODCALLTYPE *FindEdgeProcess )( 
+            IOnVoiceCapture * This,
+            /* [retval][out] */ LONG *pPid);
+        
         DECLSPEC_XFGVIRT(IOnVoiceCapture, FindDiscordProcess)
         /* [helpstring][id] */ HRESULT ( STDMETHODCALLTYPE *FindDiscordProcess )( 
             IOnVoiceCapture * This,
@@ -253,6 +261,9 @@ EXTERN_C const IID IID_IOnVoiceCapture;
 
 #define IOnVoiceCapture_FindChromeProcess(This,pPid)	\
     ( (This)->lpVtbl -> FindChromeProcess(This,pPid) ) 
+
+#define IOnVoiceCapture_FindEdgeProcess(This,pPid)	\
+    ( (This)->lpVtbl -> FindEdgeProcess(This,pPid) ) 
 
 #define IOnVoiceCapture_FindDiscordProcess(This,pPid)	\
     ( (This)->lpVtbl -> FindDiscordProcess(This,pPid) ) 

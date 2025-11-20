@@ -227,6 +227,29 @@ STDMETHODIMP COnVoiceCapture::FindChromeProcess(LONG* pPid)
     return S_OK;
 }
 
+// Edge 브라우저 프로세스 찾기
+STDMETHODIMP COnVoiceCapture::FindEdgeProcess(LONG* pPid)
+{
+    if (!pPid)
+        return E_POINTER;
+
+    printf("[COnVoiceCapture] FindEdgeProcess 호출\n");
+
+    DWORD pid = FindEdgeBrowserProcess(); // ProcessHelper 함수 호출
+    *pPid = static_cast<LONG>(pid);
+
+    if (pid == 0)
+    {
+        printf("[COnVoiceCapture] ⚠️ Edge 프로세스를 찾지 못했습니다.\n");
+    }
+    else
+    {
+        printf("[COnVoiceCapture] ✅ Edge 프로세스 발견: PID %lu\n", pid);
+    }
+
+    return S_OK;
+}
+
 // Discord 프로세스 찾기
 STDMETHODIMP COnVoiceCapture::FindDiscordProcess(LONG* pPid)
 {

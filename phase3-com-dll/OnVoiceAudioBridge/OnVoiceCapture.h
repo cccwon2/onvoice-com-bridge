@@ -91,6 +91,9 @@ public:
     // Chrome 브라우저 프로세스 찾기
     STDMETHOD(FindChromeProcess)(LONG* pPid);
 
+    // Edge 브라우저 프로세스 찾기
+    STDMETHOD(FindEdgeProcess)(LONG* pPid);
+
     // Discord 프로세스 찾기
     STDMETHOD(FindDiscordProcess)(LONG* pPid);
 

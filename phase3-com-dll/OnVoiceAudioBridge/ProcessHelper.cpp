@@ -198,6 +198,94 @@ DWORD FindChromeBrowserProcess()
     return browserPid;
 }
 
+// Edge 브라우저 프로세스 찾기 (--type= 플래그 없는 것)
+DWORD FindEdgeBrowserProcess()
+{
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE)
+    {
+        PrintUtf8("[ProcessHelper] CreateToolhelp32Snapshot failed (error=%lu)\n", GetLastError());
+        return 0;
+    }
+
+    PROCESSENTRY32W pe32 = {};
+    pe32.dwSize = sizeof(PROCESSENTRY32W);
+
+    std::vector<DWORD> edgePids;
+
+    // 1. 모든 msedge.exe 수집
+    if (Process32FirstW(hSnapshot, &pe32))
+    {
+        do
+        {
+            std::wstring exeName = pe32.szExeFile;
+            // 대소문자 구분 없이 비교하는 게 안전하지만, 보통 소문자로 나옵니다.
+            if (exeName == L"msedge.exe")
+            {
+                edgePids.push_back(pe32.th32ProcessID);
+            }
+        } while (Process32NextW(hSnapshot, &pe32));
+    }
+    CloseHandle(hSnapshot);
+
+    if (edgePids.empty())
+    {
+        PrintUtf8("[ProcessHelper] Edge not found\n");
+        return 0;
+    }
+
+    PrintUtf8("[ProcessHelper] Edge process count: %zu, analyzing...\n", edgePids.size());
+
+    // 2. 명령줄 확인 (--type= 없는 것 찾기)
+    for (DWORD pid : edgePids)
+    {
+        std::wstring cmdLine = GetProcessCommandLine(pid);
+
+        // --type= 플래그가 없으면 브라우저(메인) 프로세스!
+        if (!cmdLine.empty() && cmdLine.find(L"--type=") == std::wstring::npos)
+        {
+            PrintUtf8("[ProcessHelper] Edge browser process found: PID %lu\n", pid);
+            return pid;
+        }
+    }
+
+    // 3. 실패 시 메모리 가장 큰 것 (Fallback)
+    PrintUtf8("[ProcessHelper] CommandLine check failed, finding by memory size...\n");
+
+    SIZE_T maxMemory = 0;
+    DWORD browserPid = 0;
+
+    for (DWORD pid : edgePids)
+    {
+        HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+        if (hProcess)
+        {
+            PROCESS_MEMORY_COUNTERS pmc = {};
+            if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc)))
+            {
+                if (pmc.WorkingSetSize > maxMemory)
+                {
+                    maxMemory = pmc.WorkingSetSize;
+                    browserPid = pid;
+                }
+            }
+            CloseHandle(hProcess);
+        }
+    }
+
+    if (browserPid > 0)
+    {
+        PrintUtf8("[ProcessHelper] Edge main process (by memory): PID %lu (%.1f MB)\n",
+            browserPid, maxMemory / 1024.0 / 1024.0);
+    }
+    else
+    {
+        PrintUtf8("[ProcessHelper] Edge browser process not found\n");
+    }
+
+    return browserPid;
+}
+
 // Discord 프로세스 찾기
 DWORD FindDiscordProcess()
 {

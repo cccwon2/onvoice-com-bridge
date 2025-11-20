@@ -54,6 +54,9 @@ std::wstring GetProcessCommandLine(DWORD pid);
 // Chrome 브라우저 프로세스 찾기 (--type= 플래그 없는 것)
 DWORD FindChromeBrowserProcess();
 
+// Edge 브라우저 프로세스 찾기
+DWORD FindEdgeBrowserProcess();
+
 // Discord 프로세스 찾기
 DWORD FindDiscordProcess();
 

@@ -40,9 +40,14 @@ interface IOnVoiceCapture : IDispatch
     HRESULT FindChromeProcess([out, retval] LONG* pPid);
 
     // ========================================
-    // 메서드 5: Discord 프로세스 찾기
+    // 메서드 5: Edge 브라우저 프로세스 찾기
     // ========================================
-    [id(5), helpstring("Discord 프로세스 PID 반환 (0=찾지 못함)")]
+    [id(5)] HRESULT FindEdgeProcess([out, retval] LONG* pPid);
+
+    // ========================================
+    // 메서드 6: Discord 프로세스 찾기
+    // ========================================
+    [id(6), helpstring("Discord 프로세스 PID 반환 (0=찾지 못함)")]
     HRESULT FindDiscordProcess([out, retval] LONG* pPid);
 };
 
