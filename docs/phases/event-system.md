@@ -3,6 +3,7 @@
 OnVoiceAudioBridge COM 이벤트 시스템 구현 상세
 
 **완료 날짜**: 2025-11-18  
+**데드락 수정**: 2025-11-20  
 **소요 시간**: 2시간  
 **상태**: ✅ 완료
 
@@ -116,6 +117,13 @@ for (int i = 0; i < nConnections; ++i) {
 ```cpp
 HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
 {
+    // ⭐ [데드락 방지] 캡처 중이 아니면 즉시 리턴
+    if (m_state != CaptureState::Capturing)
+        return S_OK;
+    
+    if (!pData || dataSize == 0)
+        return S_OK;
+    
     // 1. SAFEARRAY 생성
     SAFEARRAYBOUND sab = { dataSize, 0 };
     SAFEARRAY* psa = SafeArrayCreate(VT_UI1, 1, &sab);
@@ -194,6 +202,85 @@ HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
 - COM 런타임의 전역 인터페이스 테이블
 - 스레드 간 인터페이스 포인터 공유를 안전하게 처리
 - 프록시를 통한 자동 마샬링
+
+---
+
+## 🐛 데드락 방지 (2025-11-20 수정)
+
+### 문제 상황
+
+**데드락 발생 시나리오**:
+```
+1. Main Thread: StopCapture() 호출
+2. Main Thread: m_pEngine->Stop() 호출 → 스레드 Join 대기
+3. 오디오 스레드: Fire_OnAudioData() 내부에서 IDispatch::Invoke 호출
+4. 오디오 스레드: Main Thread(STA)로 마샬링 대기
+5. ❌ 데드락! (Main Thread는 Join 대기, 오디오 스레드는 Invoke 대기)
+```
+
+### 해결책: 3단계 방어
+
+#### 1. Fire_OnAudioData에서 상태 체크 (1차 방어)
+
+```cpp
+HRESULT COnVoiceCapture::Fire_OnAudioData(BYTE* pData, UINT32 dataSize)
+{
+    // ⭐ 캡처 중이 아니면 즉시 리턴 (데드락 방지 핵심)
+    if (m_state != CaptureState::Capturing)
+        return S_OK;
+    // ... 나머지 로직
+}
+```
+
+**효과**: `StopCapture()`에서 상태를 `Stopping`으로 변경하면 오디오 스레드가 더 이상 이벤트를 보내지 않음
+
+#### 2. StopCapture에서 상태 먼저 변경 (2차 방어)
+
+```cpp
+STDMETHODIMP COnVoiceCapture::StopCapture()
+{
+    // 1. 상태를 먼저 변경하여 오디오 스레드가 이벤트를 더 이상 보내지 않게 함
+    m_state = CaptureState::Stopping;
+    
+    // 2. VBScript가 마지막 이벤트를 처리하고 루프를 빠져나올 시간을 벌어줌
+    Sleep(200);  // 50ms -> 200ms로 증가
+    
+    // 3. 엔진 정지 (스레드 Join)
+    // 이제 오디오 스레드는 Fire_OnAudioData 진입 시 m_state 체크에서 튕겨 나가므로
+    // 메인 스레드를 기다리지 않고 바로 종료됩니다.
+    hr = m_pEngine->Stop();
+}
+```
+
+**효과**: 상태 변경으로 오디오 스레드가 이벤트 전송을 중단하고, 대기 시간으로 진행 중인 이벤트 처리 완료
+
+#### 3. AudioCaptureEngine::Stop에서 콜백 먼저 끊기 (3차 방어)
+
+```cpp
+HRESULT AudioCaptureEngine::Stop()
+{
+    // ⭐ [핵심 수정 1] 콜백 연결을 먼저 끊습니다.
+    // 이제 오디오 스레드는 데이터를 캡처해도 HandleLoopbackData에서 즉시 리턴하게 됩니다.
+    m_pCallback = nullptr;
+    
+    // ⭐ [핵심 수정 2] 진행 중인 콜백이 빠져나갈 시간을 줍니다.
+    Sleep(50);
+    
+    // ⭐ [기존 로직] 이제 안전하게 스레드를 종료(Join)합니다.
+    // 더 이상 오디오 스레드가 Main Thread로 Invoke를 날리지 않으므로 데드락이 걸리지 않습니다.
+    eCaptureError err = m_capture.StopCapture();
+}
+```
+
+**효과**: 콜백을 먼저 끊어서 오디오 스레드가 더 이상 콜백을 호출하지 않도록 차단
+
+### 수정 결과
+
+```
+✅ StopCapture() 호출 시 데드락 없이 정상 종료
+✅ 오디오 스레드가 안전하게 종료
+✅ VBScript 이벤트 처리 완료 후 정상 종료
+```
 
 ---
 

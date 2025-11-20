@@ -755,6 +755,21 @@ if (device != nullptr) {
 링커 → 일반 → 사용자 단위 리디렉션 → "예(/user)"
 ```
 
+**7. StopCapture 시 데드락 발생** 🐛 신규 (2025-11-20 수정)
+
+```
+문제: StopCapture() 호출 시 데드락 발생
+- Main Thread: 스레드 Join 대기
+- 오디오 스레드: IDispatch::Invoke 마샬링 대기
+
+해결 방법 (3단계 방어):
+1. Fire_OnAudioData에서 상태 체크 먼저 (Capturing이 아니면 즉시 리턴)
+2. StopCapture에서 상태 먼저 변경 + 200ms 대기
+3. AudioCaptureEngine::Stop에서 콜백 먼저 끊기 + 50ms 대기
+
+결과: ✅ 데드락 없이 안전하게 종료
+```
+
 ---
 
 ## 💡 핵심 학습 포인트

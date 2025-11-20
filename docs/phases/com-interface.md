@@ -157,9 +157,16 @@ STDMETHODIMP COnVoiceCapture::StopCapture()
         return S_OK;
     }
 
+    // ⭐ [데드락 방지] 1. 상태를 먼저 변경하여 오디오 스레드가 이벤트를 더 이상 보내지 않게 함
     m_state = CaptureState::Stopping;
 
+    // ⭐ [데드락 방지] 2. VBScript가 마지막 이벤트를 처리하고 루프를 빠져나올 시간을 벌어줌
+    Sleep(200);  // 50ms -> 200ms로 증가
+
     if (m_pEngine) {
+        // ⭐ [데드락 방지] 3. 엔진 정지 (스레드 Join)
+        // 이제 오디오 스레드는 Fire_OnAudioData 진입 시 m_state 체크에서 튕겨 나가므로
+        // 메인 스레드를 기다리지 않고 바로 종료됩니다.
         HRESULT hr = m_pEngine->Stop();
         // 에러 처리...
     }
@@ -171,6 +178,11 @@ STDMETHODIMP COnVoiceCapture::StopCapture()
     return S_OK;
 }
 ```
+
+**데드락 방지 메커니즘**:
+1. 상태 먼저 변경: 오디오 스레드가 `Fire_OnAudioData`에서 상태 체크 시 즉시 리턴
+2. 대기 시간 확보: VBScript가 마지막 이벤트 처리 완료 대기 (200ms)
+3. 안전한 스레드 종료: 더 이상 이벤트 전송이 없으므로 Join 시 데드락 없음
 
 ---
 

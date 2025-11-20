@@ -3,7 +3,7 @@
 OnVoice COM 브리지 개발 기능 중심 진행 상황
 
 **마지막 업데이트**: 2025-11-20  
-**현재 상태**: 핵심 기능 완료 ✅ + E2E 테스트 성공 🎉 → Electron 연동 준비 중
+**현재 상태**: 핵심 기능 완료 ✅ + E2E 테스트 성공 🎉 + 데드락 수정 완료 🐛 → Electron 연동 준비 중
 
 ---
 
@@ -176,6 +176,43 @@ spDispatch->Invoke(dispidOnAudioData, ...);
 ✅ StopCapture 정상 작동
 ✅ WAV 파일 저장 완료: capture_Chrome_2025-11-20_오후_25001.wav
 ✅ 전체 E2E 테스트 통과! 🎉
+```
+
+---
+
+### 6. 데드락 방지 메커니즘 ✅
+
+**구현 상태**: 완료  
+**완료 날짜**: 2025-11-20  
+**상태**: ✅ 완료
+
+**주요 기능**:
+
+- ✅ `Fire_OnAudioData`에서 상태 체크 먼저 수행 (1차 방어)
+- ✅ `StopCapture`에서 상태 먼저 변경 + 200ms 대기 (2차 방어)
+- ✅ `AudioCaptureEngine::Stop`에서 콜백 먼저 끊기 + 50ms 대기 (3차 방어)
+- ✅ `ProcessLoopbackCapture::Reset`에서 스레드 종료 순서 개선
+
+**문제 상황**:
+
+```
+Main Thread: StopCapture() → 스레드 Join 대기
+오디오 스레드: Fire_OnAudioData() → IDispatch::Invoke 마샬링 대기
+❌ 데드락 발생!
+```
+
+**해결 방법**:
+
+1. **Fire_OnAudioData**: `m_state != Capturing`이면 즉시 리턴
+2. **StopCapture**: 상태를 `Stopping`으로 먼저 변경 → 200ms 대기
+3. **AudioCaptureEngine::Stop**: 콜백 포인터 먼저 `nullptr` 설정 → 50ms 대기
+
+**검증 결과**:
+
+```
+✅ StopCapture() 호출 시 데드락 없이 정상 종료
+✅ 오디오 스레드가 안전하게 종료
+✅ VBScript 이벤트 처리 완료 후 정상 종료
 ```
 
 ---

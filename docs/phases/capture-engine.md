@@ -91,10 +91,14 @@ HRESULT Stop();
 
 **기능**: 현재 진행 중인 캡처 중지
 
-**처리 과정**:
-1. `ProcessLoopbackCapture::StopCapture()` 호출
-2. 내부 스레드 완전 종료 대기 (200ms)
-3. 콜백 포인터 정리
+**처리 과정** (데드락 방지 수정):
+1. **콜백 연결 먼저 끊기** (`m_pCallback = nullptr`)
+   - 오디오 스레드가 더 이상 콜백을 호출하지 않도록 차단
+2. **진행 중인 콜백 완료 대기** (50ms Sleep)
+   - 이미 콜백 내부에 진입한 스레드가 빠져나올 시간 확보
+3. **스레드 안전하게 종료** (`ProcessLoopbackCapture::StopCapture()`)
+   - 더 이상 오디오 스레드가 Main Thread로 Invoke를 날리지 않으므로 데드락 방지
+4. 콜백 포인터 정리
 
 ---
 
