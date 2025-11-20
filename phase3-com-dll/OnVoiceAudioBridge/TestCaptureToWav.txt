@@ -1,0 +1,335 @@
+Option Explicit
+
+WScript.Echo "========================================"
+WScript.Echo " 오디오 캡처 및 WAV 파일 저장"
+WScript.Echo "========================================"
+WScript.Echo ""
+
+On Error Resume Next
+
+' 전역 변수: 오디오 데이터 저장
+Dim audioDataStream
+Dim audioChunkCount
+audioChunkCount = 0
+
+' =========================================
+' COM 이벤트 핸들러: OnVoice_OnAudioData
+'  - COnVoiceCapture.OnAudioData(SAFEARRAY(byte)) 이벤트 수신
+' =========================================
+Sub OnVoice_OnAudioData(ByVal audioData)
+    On Error Resume Next
+
+    ' 아직 스트림이 준비되지 않았다면 무시
+    If (audioDataStream Is Nothing) Then
+        Exit Sub
+    End If
+
+    ' 청크 크기 계산 (디버그용)
+    Dim chunkSize
+    chunkSize = 0
+    If Not IsEmpty(audioData) Then
+        chunkSize = UBound(audioData) - LBound(audioData) + 1
+    End If
+
+    ' 스트림 끝으로 이동해서 데이터 이어 붙이기
+    audioDataStream.Position = audioDataStream.Size
+    audioDataStream.Write audioData
+
+    audioChunkCount = audioChunkCount + 1
+
+    ' 필요하면 디버그 로그 사용
+    'WScript.Echo "[Event] chunk #" & audioChunkCount & _
+    '             " size=" & chunkSize & " bytes"
+End Sub
+
+' 1) COM 객체 생성 (이벤트 Prefix: "OnVoice_")
+Dim capture
+WScript.Echo "[1] COM 객체 생성..."
+
+Set capture = WScript.CreateObject("OnVoiceAudioBridge.OnVoiceCapture", "OnVoice_")
+
+If Err.Number <> 0 Or capture Is Nothing Then
+    WScript.Echo "❌ COM 객체 생성 실패"
+    WScript.Echo "   Err.Number = " & Hex(Err.Number) & " (" & Err.Number & ")"
+    WScript.Echo "   Err.Description = " & Err.Description
+    WScript.Quit 1
+End If
+
+WScript.Echo "✅ COM 객체 생성 완료"
+WScript.Echo ""
+
+' 2) 프로세스 선택
+Dim pid
+pid = 0
+Dim processName
+processName = ""
+
+WScript.Echo "[2] 캡처할 프로세스 선택"
+WScript.Echo "1. Discord (자동 찾기)"
+WScript.Echo "2. Chrome (자동 찾기)"
+WScript.Echo "3. Edge (수동 PID 입력)"
+WScript.Echo "4. 수동 PID 입력"
+
+Dim choice
+choice = InputBox("선택 (1-4):", "오디오 캡처", "1")
+
+If choice = "1" Then
+    ' Discord 자동 찾기
+    WScript.Echo ""
+    WScript.Echo "Discord 프로세스 검색 중..."
+    Err.Clear
+    pid = capture.FindDiscordProcess()
+    
+    If Err.Number <> 0 Then
+        WScript.Echo "❌ FindDiscordProcess 호출 실패"
+        WScript.Echo "   Err.Number = " & Hex(Err.Number) & " (" & Err.Number & ")"
+        WScript.Echo "   Err.Description = " & Err.Description
+        WScript.Quit 1
+    End If
+    
+    processName = "Discord"
+    
+    If pid <= 0 Then
+        WScript.Echo "❌ Discord가 실행 중이 아닙니다."
+        WScript.Quit 1
+    End If
+    
+ElseIf choice = "2" Then
+    ' Chrome 자동 찾기
+    WScript.Echo ""
+    WScript.Echo "Chrome 브라우저 프로세스 검색 중..."
+    Err.Clear
+    pid = capture.FindChromeProcess()
+    
+    If Err.Number <> 0 Then
+        WScript.Echo "❌ FindChromeProcess 호출 실패"
+        WScript.Echo "   Err.Number = " & Hex(Err.Number) & " (" & Err.Number & ")"
+        WScript.Echo "   Err.Description = " & Err.Description
+        WScript.Quit 1
+    End If
+    
+    processName = "Chrome"
+    
+    If pid <= 0 Then
+        WScript.Echo "❌ Chrome이 실행 중이 아닙니다."
+        WScript.Quit 1
+    End If
+    
+ElseIf choice = "3" Then
+    ' Edge 수동 입력
+    WScript.Echo ""
+    WScript.Echo "힌트: Edge를 실행한 후 작업 관리자에서 PID 확인"
+    WScript.Echo "      Edge: Shift+ESC → 브라우저 프로세스 PID"
+    pid = CLng(InputBox("Edge PID:", "오디오 캡처", "0"))
+    processName = "Edge"
+    
+    If pid <= 0 Then
+        WScript.Echo "❌ 잘못된 PID: " & pid
+        WScript.Quit 1
+    End If
+    
+ElseIf choice = "4" Then
+    ' 수동 PID 입력
+    WScript.Echo ""
+    WScript.Echo "힌트: 프로세스를 실행한 후 작업 관리자에서 PID 확인"
+    pid = CLng(InputBox("PID:", "오디오 캡처", "0"))
+    processName = "수동입력"
+    
+    If pid <= 0 Then
+        WScript.Echo "❌ 잘못된 PID: " & pid
+        WScript.Quit 1
+    End If
+Else
+    WScript.Echo "❌ 잘못된 선택: " & choice
+    WScript.Quit 1
+End If
+
+WScript.Echo ""
+WScript.Echo "✅ 타깃: " & processName & " (PID: " & pid & ")"
+WScript.Echo ""
+
+' 3) 오디오 데이터 스트림 초기화
+Set audioDataStream = CreateObject("ADODB.Stream")
+audioDataStream.Type = 1 ' adTypeBinary
+audioDataStream.Open
+audioChunkCount = 0
+
+' 4) 캡처 시작
+WScript.Echo "[3] StartCapture(" & pid & ") 호출..."
+Err.Clear
+Dim hr
+hr = capture.StartCapture(pid)
+
+If Err.Number <> 0 Then
+    WScript.Echo "❌ StartCapture 호출 중 스크립트 오류"
+    WScript.Echo "   Err.Number = " & Hex(Err.Number) & " (" & Err.Number & ")"
+    WScript.Echo "   Err.Description = " & Err.Description
+    WScript.Quit 1
+End If
+
+If hr <> 0 Then
+    WScript.Echo "❌ StartCapture 실패 (HR=" & Hex(hr) & ")"
+    WScript.Quit 1
+End If
+
+WScript.Echo "✅ StartCapture 성공 (HR=" & Hex(hr) & ")"
+WScript.Echo ""
+
+' 5) 10초 동안 캡처
+WScript.Echo "[4] 10초 동안 오디오 캡처 중..."
+WScript.Echo "⚠️  " & processName & "에서 소리가 나도록 하세요!"
+WScript.Echo "   (YouTube 재생, Discord 음성 채팅 등)"
+WScript.Echo ""
+
+Dim startTime
+startTime = Timer
+Dim elapsedTime
+Dim i
+
+For i = 10 To 1 Step -1
+    elapsedTime = Timer - startTime
+    If elapsedTime >= 10 Then
+        Exit For
+    End If
+    WScript.Echo "남은 시간: " & i & "초... (수집된 데이터: " & audioChunkCount & _
+                 " 청크, " & audioDataStream.Size & " bytes)"
+    WScript.Sleep 1000
+Next
+
+' 정확히 10초 대기
+Do While (Timer - startTime) < 10
+    WScript.Sleep 100
+Loop
+
+WScript.Echo ""
+Dim totalBytes
+totalBytes = audioDataStream.Size
+WScript.Echo "✅ 캡처 완료! 총 " & audioChunkCount & " 개의 오디오 청크 수집됨"
+WScript.Echo "   총 데이터 크기: " & totalBytes & " bytes"
+WScript.Echo ""
+
+' 6) 캡처 중지
+WScript.Echo "[5] StopCapture 호출..."
+Err.Clear
+hr = capture.StopCapture()
+
+If Err.Number <> 0 Then
+    WScript.Echo "❌ StopCapture 호출 중 스크립트 오류"
+    WScript.Echo "   Err.Number = " & Hex(Err.Number) & " (" & Err.Number & ")"
+    WScript.Echo "   Err.Description = " & Err.Description
+Else
+    WScript.Echo "✅ StopCapture 완료 (HR=" & Hex(hr) & ")"
+End If
+
+WScript.Echo ""
+
+' 7) WAV 파일로 저장
+If totalBytes = 0 Then
+    WScript.Echo "⚠️  수집된 오디오 데이터가 없습니다."
+    WScript.Echo "   프로세스에서 소리가 나는지 확인하세요."
+    audioDataStream.Close
+    Set audioDataStream = Nothing
+    Set capture = Nothing
+    WScript.Quit 0
+End If
+
+WScript.Echo "[6] WAV 파일로 저장 중..."
+
+Dim outputFile
+outputFile = "capture_" & processName & "_" & _
+             Replace(Replace(Replace(Now, "/", ""), ":", ""), " ", "_") & ".wav"
+
+WScript.Echo "   출력 파일: " & outputFile
+
+Dim wavStream
+Set wavStream = CreateObject("ADODB.Stream")
+wavStream.Type = 1 ' adTypeBinary
+wavStream.Open
+
+' === WAV 헤더 작성 ===
+Dim validBytes
+validBytes = totalBytes
+
+' 16-bit PCM 이라서, 혹시 홀수 바이트라면 마지막 1바이트는 버림
+If (validBytes Mod 2) <> 0 Then
+    validBytes = validBytes - 1
+End If
+
+Dim riffSize
+riffSize = 36 + validBytes   ' RIFF chunk size = 전체 파일 - 8
+
+WScript.Echo "   [DEBUG] totalBytes = " & totalBytes
+WScript.Echo "   [DEBUG] validBytes = " & validBytes
+WScript.Echo "   [DEBUG] riffSize   = " & riffSize
+
+' RIFF 헤더
+wavStream.Write StringToBytes("RIFF")
+wavStream.Write IntToBytes(riffSize, 4)
+wavStream.Write StringToBytes("WAVE")
+
+' fmt 청크
+wavStream.Write StringToBytes("fmt ")
+wavStream.Write IntToBytes(16, 4)    ' fmt chunk size
+wavStream.Write IntToBytes(1, 2)     ' AudioFormat = 1 (PCM)
+wavStream.Write IntToBytes(1, 2)     ' NumChannels = 1 (mono)
+wavStream.Write IntToBytes(16000, 4) ' SampleRate = 16000
+wavStream.Write IntToBytes(32000, 4) ' ByteRate = 16000 * 1 * 16 / 8
+wavStream.Write IntToBytes(2, 2)     ' BlockAlign = 2
+wavStream.Write IntToBytes(16, 2)    ' BitsPerSample = 16
+
+' data 청크
+wavStream.Write StringToBytes("data")
+wavStream.Write IntToBytes(validBytes, 4)
+
+' PCM 데이터 추가 (audioDataStream의 내용을 복사)
+audioDataStream.Position = 0
+wavStream.Write audioDataStream.Read(validBytes)
+
+' 파일로 저장
+wavStream.SaveToFile outputFile, 2 ' adSaveCreateOverwrite
+wavStream.Close
+
+WScript.Echo ""
+WScript.Echo "✅ WAV 파일 저장 완료: " & outputFile
+WScript.Echo "   파일 크기(헤더 기준): " & (riffSize + 8) & " bytes"
+WScript.Echo "   오디오 길이: 약 " & FormatNumber(validBytes / 32000, 2) & " 초"
+WScript.Echo ""
+
+' 정리
+Set wavStream = Nothing
+audioDataStream.Close
+Set audioDataStream = Nothing
+Set capture = Nothing
+
+WScript.Echo "테스트 종료"
+WScript.Quit 0
+
+' =========================================
+' 유틸리티 함수들
+' =========================================
+
+' 문자열을 바이트 배열(VT_ARRAY|VT_UI1)로 변환
+Function StringToBytes(str)
+    Dim stm
+    Set stm = CreateObject("ADODB.Stream")
+    stm.Type = 2                  ' Text
+    stm.Charset = "iso-8859-1"    ' 1:1 매핑되는 single-byte 인코딩
+    stm.Open
+    stm.WriteText str
+    stm.Position = 0
+    stm.Type = 1                  ' Binary
+    StringToBytes = stm.Read(-1)  ' Variant(byte[])
+    stm.Close
+    Set stm = Nothing
+End Function
+
+' 정수를 리틀 엔디안 바이트 배열로 변환
+Function IntToBytes(value, byteCount)
+    Dim i, s
+    s = ""
+    For i = 1 To byteCount
+        s = s & Chr(value And &HFF)
+        value = value \ &H100
+    Next
+    IntToBytes = StringToBytes(s)
+End Function
