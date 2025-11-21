@@ -3,13 +3,13 @@
 
 #include "resource.h"
 #include "OnVoiceAudioBridge_i.h"
-#include "AudioCaptureEngine.h"  // ⭐ 오디오 캡처 엔진
+#include "AudioCaptureEngine.h"  // ⭐ 오디오 캡처 엔진 클래스 정의 필요
 #include "ProcessHelper.h"       // ⭐ 프로세스 찾기 유틸리티
 #include <vector>
-#include <atlbase.h>            // CComGITPtr
+#include <atlbase.h>             // CComGITPtr
 
 #if defined(_WIN32_WCE) && !defined(_CE_DCOM) && !defined(_CE_ALLOW_SINGLE_THREADED_OBJECTS_IN_MTA)
-#error "단일 스레드 COM 개체는 전체 DCOM 지원을 포함하지 않는 Windows Mobile 플랫폼과 같은 Windows CE 플랫폼에서 제대로 지원되지 않습니다. ATL이 단일 스레드 COM 개체의 생성을 지원하고 단일 스레드 COM 개체 구현을 사용할 수 있도록 _CE_ALLOW_SINGLE_THREADED_OBJECTS_IN_MTA를 정의하십시오. rgs 파일의 스레딩 모델은 DCOM Windows CE가 아닌 플랫폼에서 지원되는 유일한 스레딩 모델이므로 'Free'로 설정되어 있습니다."
+#error "단일 스레드 COM 개체는 전체 DCOM 지원을 포함하지 않는 Windows Mobile 플랫폼과 같은 Windows CE 플랫폼에서 제대로 지원되지 않습니다."
 #endif
 
 using namespace ATL;
@@ -42,12 +42,14 @@ class ATL_NO_VTABLE COnVoiceCapture :
 public:
     COnVoiceCapture()
         : m_pEngine(nullptr)
+        , m_engineOwner(true)
         , m_state(CaptureState::Stopped)
         , m_targetPid(0)
         , m_ownerThreadId(GetCurrentThreadId())
     {
     }
 
+    // 소멸자는 cpp 파일에 구현됨
     ~COnVoiceCapture();
 
     DECLARE_REGISTRY_RESOURCEID(106)
@@ -91,7 +93,7 @@ public:
     // Chrome 브라우저 프로세스 찾기
     STDMETHOD(FindChromeProcess)(LONG* pPid);
 
-    // Edge 브라우저 프로세스 찾기
+    // [수정] Edge 브라우저 프로세스 찾기 (누락되었던 부분 추가)
     STDMETHOD(FindEdgeProcess)(LONG* pPid);
 
     // Discord 프로세스 찾기
@@ -110,18 +112,36 @@ public:
     // ========================================
     HRESULT Fire_OnAudioData(BYTE* pData, UINT32 dataSize);
 
+    // ========================================
+    // 테스트/DI 지원: 외부에서 엔진 주입
+    // ========================================
+    // 주의: AudioCaptureEngine* 구체 클래스로 변경하거나, 
+    // IAudioCaptureEngine 인터페이스에 가상 소멸자가 있어야 함.
+    void SetAudioCaptureEngine(AudioCaptureEngine* pEngine, bool takeOwnership = false)
+    {
+        if (m_pEngine && m_engineOwner) {
+            m_pEngine->Stop();
+            delete m_pEngine;
+        }
+        m_pEngine = pEngine;
+        m_engineOwner = takeOwnership;
+    }
+
 private:
     // ========================================
     // 멤버 변수
     // ========================================
-    AudioCaptureEngine* m_pEngine;              // PID 기반 엔진
-    CaptureState m_state;                       // 현재 상태
-    LONG m_targetPid;                           // 타깃 PID
-    DWORD m_ownerThreadId;                      // 객체 생성 스레드 ID
+
+    // [수정] CPP 파일의 new AudioCaptureEngine()과 일치하도록 구체 클래스 포인터 사용 권장
+    // 만약 인터페이스(IAudioCaptureEngine)를 쓰려면 반드시 가상 소멸자가 있어야 합니다.
+    AudioCaptureEngine* m_pEngine;       // PID 기반 엔진 객체
+
+    bool m_engineOwner;                  // 엔진 소유 여부 (삭제 책임)
+    CaptureState m_state;                // 현재 상태
+    LONG m_targetPid;                    // 타깃 PID
+    DWORD m_ownerThreadId;               // 객체 생성 스레드 ID
 
     // 🔥 VBScript/JS 이벤트 싱크를 스레드 간 안전하게 호출하기 위한 GIT 프록시들
-    //  - StartCapture할 때 m_vec 에 연결된 sink들을 GIT에 등록
-    //  - 오디오 캡처 스레드에서는 GIT에서 CopyTo() 해서 Invoke 호출
     std::vector<CComGITPtr<IDispatch>> m_gitSinks;
 };
 

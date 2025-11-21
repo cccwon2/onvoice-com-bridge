@@ -114,7 +114,7 @@ EXTERN_C const IID IID_IOnVoiceCapture;
         virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE FindChromeProcess( 
             /* [retval][out] */ LONG *pPid) = 0;
         
-        virtual /* [id] */ HRESULT STDMETHODCALLTYPE FindEdgeProcess( 
+        virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE FindEdgeProcess( 
             /* [retval][out] */ LONG *pPid) = 0;
         
         virtual /* [helpstring][id] */ HRESULT STDMETHODCALLTYPE FindDiscordProcess( 
@@ -205,7 +205,7 @@ EXTERN_C const IID IID_IOnVoiceCapture;
             /* [retval][out] */ LONG *pPid);
         
         DECLSPEC_XFGVIRT(IOnVoiceCapture, FindEdgeProcess)
-        /* [id] */ HRESULT ( STDMETHODCALLTYPE *FindEdgeProcess )( 
+        /* [helpstring][id] */ HRESULT ( STDMETHODCALLTYPE *FindEdgeProcess )( 
             IOnVoiceCapture * This,
             /* [retval][out] */ LONG *pPid);
         
@@ -284,7 +284,7 @@ EXTERN_C const IID IID_IOnVoiceCapture;
 #define __OnVoiceAudioBridgeLib_LIBRARY_DEFINED__
 
 /* library OnVoiceAudioBridgeLib */
-/* [version][uuid] */ 
+/* [helpstring][version][uuid] */ 
 
 
 EXTERN_C const IID LIBID_OnVoiceAudioBridgeLib;
@@ -293,7 +293,7 @@ EXTERN_C const IID LIBID_OnVoiceAudioBridgeLib;
 #define ___IOnVoiceCaptureEvents_DISPINTERFACE_DEFINED__
 
 /* dispinterface _IOnVoiceCaptureEvents */
-/* [hidden][uuid] */ 
+/* [helpstring][uuid] */ 
 
 
 EXTERN_C const IID DIID__IOnVoiceCaptureEvents;

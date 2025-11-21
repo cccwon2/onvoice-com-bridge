@@ -1,11 +1,13 @@
-﻿// OnVoiceAudioBridge.idl: OnVoiceAudioBridge의 IDL 소스
-//
-// 이 파일은 MIDL 도구에 의해 처리되어
-// 형식 라이브러리(OnVoiceAudioBridge.tlb) 및 마샬링 코드를 생성합니다.
+﻿// OnVoiceAudioBridge.idl
+// IDL 소스: 마샬링 코드 및 Type Library 생성용
 
 import "oaidl.idl";
 import "ocidl.idl";
+import "shobjidl.idl"; // 파일 상단으로 이동
 
+// ========================================
+// 1. IOnVoiceCapture 인터페이스 (메인 기능)
+// ========================================
 [
     object,
     uuid(43a468da-7889-46c9-99de-38cb93e4e649),
@@ -15,77 +17,72 @@ import "ocidl.idl";
 ]
 interface IOnVoiceCapture : IDispatch
 {
-    // ========================================
-    // 메서드 1: 캡처 시작 (PID 지정)
-    // ========================================
-    [id(1), helpstring("특정 프로세스의 오디오 캡처 시작")]
+    // 메서드 1: 캡처 시작
+    [id(1), helpstring("Start capture with process ID")]
     HRESULT StartCapture([in] LONG processId);
 
-    // ========================================
     // 메서드 2: 캡처 중지
-    // ========================================
-    [id(2), helpstring("오디오 캡처 중지")]
+    [id(2), helpstring("Stop capture")]
         HRESULT StopCapture();
 
-    // ========================================
-    // 메서드 3: 상태 확인 (0=중지, 1=실행 중)
-    // ========================================
-    [id(3), helpstring("현재 캡처 상태 반환")]
+    // 메서드 3: 상태 확인
+    [id(3), helpstring("Get current capture state")]
         HRESULT GetCaptureState([out, retval] LONG* pState);
 
-    // ========================================
-    // 메서드 4: Chrome 브라우저 프로세스 찾기
-    // ========================================
-    [id(4), helpstring("Chrome 브라우저 프로세스 PID 반환 (0=찾지 못함)")]
-    HRESULT FindChromeProcess([out, retval] LONG* pPid);
+    // 메서드 4: Chrome 찾기
+    [id(4), helpstring("Find Chrome PID")]
+        HRESULT FindChromeProcess([out, retval] LONG* pPid);
 
-    // ========================================
-    // 메서드 5: Edge 브라우저 프로세스 찾기
-    // ========================================
-    [id(5)] HRESULT FindEdgeProcess([out, retval] LONG* pPid);
+    // 메서드 5: Edge 찾기 (추가됨)
+    [id(5), helpstring("Find Edge PID")]
+        HRESULT FindEdgeProcess([out, retval] LONG* pPid);
 
-    // ========================================
-    // 메서드 6: Discord 프로세스 찾기
-    // ========================================
-    [id(6), helpstring("Discord 프로세스 PID 반환 (0=찾지 못함)")]
-    HRESULT FindDiscordProcess([out, retval] LONG* pPid);
+    // 메서드 6: Discord 찾기
+    [id(6), helpstring("Find Discord PID")]
+        HRESULT FindDiscordProcess([out, retval] LONG* pPid);
 };
 
+// ========================================
+// 2. 라이브러리 정의 (Type Library)
+// ========================================
 [
     uuid(419618dd-d242-4428-8f62-5651cb46a9be),
     version(1.0),
+    helpstring("OnVoiceAudioBridge 1.0 Type Library")
 ]
 library OnVoiceAudioBridgeLib
 {
     importlib("stdole2.tlb");
 
     // ========================================
-    // ★ 이벤트 dispinterface 정의
-    //    - 16kHz mono 16-bit PCM 오디오 청크 전달
+    // ★ 이벤트 인터페이스 (Events)
     // ========================================
     [
-        uuid(52b4a16b-9f83-4a3e-9240-4dd6676540ea), // 임시 GUID, 원하면 guidgen.exe로 새로 생성 가능
-        hidden
+        uuid(52b4a16b-9f83-4a3e-9240-4dd6676540ea),
+        helpstring("_IOnVoiceCaptureEvents Interface")
     ]
-    dispinterface _IOnVoiceCaptureEvents
+        dispinterface _IOnVoiceCaptureEvents
     {
-    properties:
-    methods:
-        [id(1), helpstring("16kHz mono PCM audio chunk")]
-        void OnAudioData([in] SAFEARRAY(BYTE) pcmData);
+        properties:
+        methods:
+            // [id(1)]은 winax 연결의 핵심입니다.
+            // BYTE -> unsigned char로 명시 (표준)
+            [id(1), helpstring("Event triggered when audio data is captured")]
+            void OnAudioData([in] SAFEARRAY(unsigned char) pcmData);
     };
 
     // ========================================
-    // coclass: 기본 인터페이스 + 이벤트 소스 연결
+    // ★ CoClass (구현 클래스)
     // ========================================
     [
-        uuid(fe3c62ec-02f2-4c63-8266-d538a86fd7f9)
+        uuid(fe3c62ec-02f2-4c63-8266-d538a86fd7f9),
+        helpstring("OnVoiceCapture Class")
     ]
         coclass OnVoiceCapture
     {
         [default] interface IOnVoiceCapture;
-        [default, source] dispinterface _IOnVoiceCaptureEvents; // ★ 추가
+
+        // ⭐ [source] 속성이 있어야 외부(JS)로 이벤트가 나갑니다.
+        [default, source] dispinterface _IOnVoiceCaptureEvents;
     };
 };
-
-import "shobjidl.idl";
