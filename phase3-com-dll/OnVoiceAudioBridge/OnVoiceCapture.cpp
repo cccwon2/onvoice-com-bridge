@@ -283,7 +283,7 @@ void COnVoiceCapture::OnAudioData(BYTE* pData, UINT32 dataSize)
     if (m_state != CaptureState::Capturing)
         return;
 
-    printf("[COnVoiceCapture] OnAudioData (size=%u bytes)\n", dataSize);
+    //printf("[COnVoiceCapture] OnAudioData (size=%u bytes)\n", dataSize);
 
     HRESULT hrEvent = Fire_OnAudioData(pData, dataSize);
 
